@@ -75,6 +75,8 @@ def fetch_raster(west: int, south: int, size: int, resolution: int) -> Raster:
     path = CACHE / f'{key}.tif'
     with LOCK:
         if not path.exists():
+            if os.getenv('RANDO_OFFLINE') == '1':
+                raise ValueError('Elevation tile not cached and RANDO_OFFLINE=1')
             params = dict(bbox=f'{west},{south},{west+size},{south+size}', bboxSR=25833,
                           imageSR=25833, size=f'{size//resolution},{size//resolution}',
                           format='tiff', pixelType='F32', f='image',

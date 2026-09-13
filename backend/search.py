@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import logging
+import os
 
 import httpx
 import numpy as np
@@ -62,28 +63,36 @@ def build_mosaic(west: int, south: int, east: int, north: int) -> Mosaic:
 def fall_line_drop(z, ok, counted):
     """Propagate along steepest descent while `ok` holds (slope below the upper bound).
 
-    Returns total drop of the chain and the drop accumulated on `counted` (in-band) cells,
-    so gentle interruptions are tolerated but anything steeper than the band ends the run.
+    Returns [total drop, total length, band drop, band length] grids and the D8 target grid, so
+    gentle interruptions are tolerated but anything steeper than the band ends the run.
+    Memory-lean: int32 indices, one shifted grid at a time (a 50 km mosaic is 25 M cells).
     """
+    z = np.asarray(z, dtype='float32')
     rows, cols = z.shape
+    n_cells = rows * cols
     padded = np.pad(z, 1, constant_values=np.nan)
-    best_gain, target = np.full(z.shape, -np.inf), np.full(z.shape, -1, dtype=np.int64)
-    flat = np.arange(rows * cols).reshape(z.shape)
+    best_gain = np.full(z.shape, -np.inf, dtype='float32')
+    target = np.full(z.shape, -1, dtype=np.int32)
+    flat = np.arange(n_cells, dtype=np.int32).reshape(z.shape)
     for dr, dc in OFFSETS:
         nz = padded[1 + dr:1 + dr + rows, 1 + dc:1 + dc + cols]
-        gain = (z - nz) / (10 * np.hypot(dr, dc))
+        gain = (z - nz) / np.float32(10 * np.hypot(dr, dc))
         better = np.isfinite(gain) & (gain > best_gain)
-        best_gain = np.where(better, gain, best_gain)
-        shifted = np.full(z.shape, -1, dtype=np.int64)
+        np.copyto(best_gain, gain, where=better)
         r_src = slice(max(0, -dr), rows - max(0, dr)); c_src = slice(max(0, -dc), cols - max(0, dc))
         r_dst = slice(max(0, dr), rows - max(0, -dr)); c_dst = slice(max(0, dc), cols - max(0, -dc))
-        shifted[r_src, c_src] = flat[r_dst, c_dst]
-        target = np.where(better, shifted, target)
-    idx = np.flatnonzero(ok & (target.ravel() >= 0) & (best_gain.ravel() > 0))
+        # Only the window where the neighbour exists can be "better"; write targets there directly.
+        sub = better[r_src, c_src]
+        target[r_src, c_src][sub] = flat[r_dst, c_dst][sub]
+        del gain, better, sub
+    del padded
+    idx = np.flatnonzero(ok & (target.ravel() >= 0) & (best_gain.ravel() > 0)).astype(np.int32)
+    del best_gain
     tgt = target.ravel()[idx]
     dz = (z.ravel()[idx] - z.ravel()[tgt]).astype('float32')
     step = np.hypot(10 * np.abs(idx // cols - tgt // cols), 10 * np.abs(idx % cols - tgt % cols)).astype('float32')
-    dl = np.hypot(step, dz)
+    dl = np.hypot(step, dz).astype('float32')
+    del step
     ok_t = ok.ravel()[tgt]
     inband = counted.ravel()[idx]
     increments = [dz, dl, np.where(inband, dz, 0), np.where(inband, dl, 0)]  # total drop, total length, band drop, band length
@@ -91,25 +100,32 @@ def fall_line_drop(z, ok, counted):
     # ~log2(length) passes instead of one pass per cell. A step into terrain that is not `ok`
     # contributes nothing and ends the chain (its target becomes a sink).
     n = len(idx)
-    pos = np.full(rows * cols, -1, dtype=np.int64); pos[idx] = np.arange(n)
-    nxt = np.where(ok_t, pos[tgt], -1)                       # local index of the next chain cell, -1 = end
+    pos = np.full(n_cells, -1, dtype=np.int32); pos[idx] = np.arange(n, dtype=np.int32)
+    nxt = np.where(ok_t, pos[tgt], -1).astype(np.int32)
+    del pos
     sums = [np.where(ok_t, inc, 0).astype('float32') for inc in increments]
+    del increments, dz, dl
     for _ in range(64):
-        live = nxt >= 0
-        if not live.any():
+        live = np.flatnonzero(nxt >= 0)
+        if not len(live):
             break
         j = nxt[live]
         for acc in sums:
             acc[live] += acc[j]
         nxt[live] = nxt[j]
-    full = [np.zeros(rows * cols, dtype='float32') for _ in sums]
-    for f, acc in zip(full, sums):
-        f[idx] = acc
-    return [f.reshape(z.shape) for f in full], target
+    full = []
+    for acc in sums:
+        f = np.zeros(n_cells, dtype='float32'); f[idx] = acc; full.append(f.reshape(z.shape))
+    return full, target
+
+
+OFFLINE = os.getenv('RANDO_OFFLINE') == '1'   # use cached vendor data only; never call the network
 
 
 def overpass(query, timeout):
     """Query the public Overpass API, falling back to a mirror; None when both fail."""
+    if OFFLINE:
+        return None
     for url in (*OVERPASS_MIRRORS[::-1], OVERPASS):  # fastest mirror first; the primary has been rate-limiting
         try:
             response = httpx.post(url, data={'data': query}, timeout=timeout, headers={'User-Agent': 'cicrando/0.1 terrain planner'})

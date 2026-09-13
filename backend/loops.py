@@ -37,14 +37,32 @@ def osm_access(west, south, east, north):
              f'way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track)$"]{bb};);out center tags geom;')
     data = overpass(query, 200)
     if data is None:
-        return None
+        # Fall back to the union of earlier access responses clipped to this bbox.
+        elements, seen = [], set()
+        for other in CACHE.glob('access_*.json'):
+            for e in json.loads(other.read_text()).get('elements', []):
+                c = e.get('center') or ({'lat': e.get('lat'), 'lon': e.get('lon')} if 'lat' in e else None) or (e.get('geometry') or [None])[0]
+                if c and c.get('lat') is not None and lat0 <= c['lat'] <= lat1 and lon0 <= c['lon'] <= lon1 and (e['type'], e['id']) not in seen:
+                    seen.add((e['type'], e['id'])); elements.append(e)
+        if not elements:
+            return None
+        logger.warning('Using cached access data for this bbox (%d elements)', len(elements))
+        return {'elements': elements}
     CACHE.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data))
     return data
 
 
 def nvdb_unplowed(west, south, east, north):
-    """NVDB 810 segments with 'Ingen vinterdrift' as UTM point arrays; empty when unavailable."""
+    """NVDB 810 segments with 'Ingen vinterdrift' as UTM point arrays; cached; empty when unavailable."""
+    from .search import CACHE, OFFLINE
+    cache = CACHE / f'nvdb810_{west}_{south}_{east}_{north}_v1.json'
+    if cache.exists():
+        pts = json.loads(cache.read_text())
+        return np.array(pts) if pts else np.zeros((0, 2))
+    if OFFLINE:
+        logger.warning('NVDB not cached for this bbox and RANDO_OFFLINE=1')
+        return np.zeros((0, 2))
     url = f'{NVDB}/810?kartutsnitt={west},{south},{east},{north}&inkluder=egenskaper,geometri&srid=5973&antall=1000'
     pts = []
     try:
@@ -65,14 +83,16 @@ def nvdb_unplowed(west, south, east, north):
             if not nxt or not d.get('objekter'):
                 break
             url = nxt['href']
+        CACHE.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(pts))
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning('NVDB unavailable: %s', exc)
     return np.array(pts) if pts else np.zeros((0, 2))
 
 
-def parking_spots(west, south, east, north):
+def parking_spots(west, south, east, north, pad=5000):
     """Parking points with winter-access class; None when no access data at all."""
-    data = osm_access(west - 5000, south - 5000, east + 5000, north + 5000)
+    data = osm_access(west - pad, south - pad, east + pad, north + pad)
     if data is None:
         return None
     roads, closed_pts, spots = [], [], []
@@ -90,7 +110,7 @@ def parking_spots(west, south, east, north):
     if not spots:
         return []
     rx, ry = TO_UTM.transform(np.array([r[0] for r in roads]), np.array([r[1] for r in roads])) if roads else (np.zeros(0), np.zeros(0))
-    nvdb = nvdb_unplowed(west - 5000, south - 5000, east + 5000, north + 5000)
+    nvdb = nvdb_unplowed(west - pad, south - pad, east + pad, north + pad)
     overrides = json.loads(Path('data/winter_roads.json').read_text()).get('overrides', []) if Path('data/winter_roads.json').exists() else []
     for s in spots:
         x, y = TO_UTM.transform(s['lon'], s['lat']); s['x'], s['y'] = float(x), float(y)
@@ -114,9 +134,13 @@ def parking_spots(west, south, east, north):
 
 def run_candidates(pr, pc, z, band_len, counted, target, ok, slope, aspect, forest, max_runs=4):
     """Up to `max_runs` distinct fall-line runs starting within 800 m / 200 m below the summit."""
-    rr, cc = np.ogrid[:z.shape[0], :z.shape[1]]
-    near = ((rr - pr) ** 2 + (cc - pc) ** 2 <= 80 ** 2) & counted & (np.nan_to_num(z, nan=-1e9) >= z[pr, pc] - 200)
-    order = np.argsort(-np.where(near, band_len, 0).ravel())[:400]
+    # Work in a window around the summit; the full grid is tens of millions of cells.
+    r0, r1 = max(0, pr - 80), min(z.shape[0], pr + 81); c0, c1 = max(0, pc - 80), min(z.shape[1], pc + 81)
+    rr, cc = np.ogrid[r0:r1, c0:c1]
+    near = ((rr - pr) ** 2 + (cc - pc) ** 2 <= 80 ** 2) & counted[r0:r1, c0:c1] & (np.nan_to_num(z[r0:r1, c0:c1], nan=-1e9) >= z[pr, pc] - 200)
+    local = np.where(near, band_len[r0:r1, c0:c1], 0)
+    order_local = np.argsort(-local.ravel())[:400]
+    order = (order_local // (c1 - c0) + r0) * z.shape[1] + (order_local % (c1 - c0) + c0)
     runs, ends = [], []
     for top in order:
         if band_len.ravel()[top] < 300:

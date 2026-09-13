@@ -45,6 +45,18 @@ parking → skin up → ski → back to the same car — with alternative parkin
 skin/walk legs on 10 m terrain, fall-line runs, OSM parkings with winter-access class (OSM/NVDB tags,
 road class, `data/winter_roads.json` overrides), OSRM drive times. GPX export, shareable links.
 
+Vendor data is cached under `.cache/` by default — elevation tiles, AR5 forest PNGs, Overpass
+responses (roads, parkings, access tags), NVDB winter classes, OSRM drive times and place names — so a
+rerun never re-downloads what it has. `RANDO_OFFLINE=1` forbids network calls entirely and works
+from the cache alone (uncached tiles then fail loudly; uncached roads/forest/drive times stay unknown).
+
+Least-cost legs use a terrain-adaptive mesh (`backend/mesh.py`): 10 m cells wherever slope ≥15° or
+impassable, merged 20–160 m cells over gentle uniform ground (≈30 % of the cells remain), hanging
+nodes joined to every touching leaf, octile edge lengths, and a compiled Dijkstra (numba) that stops
+when all targets are settled. Paths are walked back onto 10 m cells so every statistic (max slope,
+share ≥30°) is read from the full-resolution grid. Against a full 10 m search: costs within ~1 %,
+same number of legs, ~3× faster per block.
+
 Performance: fall-line propagation uses pointer jumping (≈30× faster than one pass per cell) and the
 scan scripts run 4 blocks in parallel (`backend/blocks.py`); a full 13-block graph rebuild takes ~5 min
 with tiles cached. Cached blocks are skipped, so reruns are incremental.

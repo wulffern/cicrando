@@ -24,7 +24,7 @@ def worker(b):
     return toppturs(b['x'], b['y'], b['x'] + B, b['y'] + B)
 
 if __name__ == '__main__':
-    run_blocks(sorted(blocks, key=lambda b: b['dist_km']), worker, out, workers=4,
+    run_blocks(sorted(blocks, key=lambda b: b['dist_km']), worker, out, workers=3,
                describe=lambda r: f"{len(r['tours'])} summits, {sum(1 for t in r['tours'] if t['descent'])} with descent")
 
 if __name__ == '__main__':

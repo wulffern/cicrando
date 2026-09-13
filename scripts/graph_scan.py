@@ -25,7 +25,7 @@ def worker(b):
     return build(b['x'], b['y'], b['x'] + B, b['y'] + B, f"{b['x']//1000}_{b['y']//1000}_")
 
 if __name__ == '__main__':
-    run_blocks(sorted(blocks, key=lambda b: b['dist_km']), worker, out, workers=4,
+    run_blocks(sorted(blocks, key=lambda b: b['dist_km']), worker, out, workers=2,
                describe=lambda g: f"{len(g['parkings'])} parkings, {len(g['summits'])} summits, {len(g['runs'])} runs, {len(g['edges'])} edges")
 
 if __name__ == '__main__':

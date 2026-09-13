@@ -51,7 +51,27 @@ def path_stats(rows, cols, z, slope, forest, horizontal, vertical):
 
 
 def drive_minutes(origin, points):
-    """OSRM driving minutes from origin (lon, lat) to each point; None entries when unroutable."""
+    """OSRM driving minutes from origin (lon, lat) to each point; cached per pair; None when unroutable."""
+    import json
+    from .search import CACHE, OFFLINE
+    cache_path = CACHE / 'osrm_drive_v1.json'
+    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    key = lambda p: f'{origin[0]:.4f},{origin[1]:.4f}>{p[0]:.4f},{p[1]:.4f}'
+    out = [cache.get(key(p), 'miss') for p in points]
+    missing = [i for i, v in enumerate(out) if v == 'miss']
+    if missing and OFFLINE:
+        logger.warning('%d drive times not cached and RANDO_OFFLINE=1', len(missing))
+    fetched = _osrm([points[i] for i in missing], origin) if missing and not OFFLINE else [None] * len(missing)
+    for i, v in zip(missing, fetched):
+        out[i] = v
+        if v is not None:
+            cache[key(points[i])] = v
+    CACHE.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache))
+    return [None if v == 'miss' else v for v in out]
+
+
+def _osrm(points, origin):
     out = []
     for i in range(0, len(points), 90):
         batch = points[i:i + 90]
