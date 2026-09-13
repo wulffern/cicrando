@@ -19,7 +19,8 @@ radius = float(sys.argv[4]) if len(sys.argv) > 4 else 60
 B = 28000
 ox, oy = TO_UTM.transform(lon, lat)
 blocks = [b for b in json.load(open('.cache/scan_blocks.json')) if np.hypot(b['x'] + B / 2 - ox, b['y'] + B / 2 - oy) / 1000 <= radius]
-out = Path('.cache/graph')
+# Old graphs contain centre-cost approximations and unchecked simplified lines.
+out = Path('.cache/graph-v2')
 
 def worker(b):
     return build(b['x'], b['y'], b['x'] + B, b['y'] + B, f"{b['x']//1000}_{b['y']//1000}_")

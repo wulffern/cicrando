@@ -51,15 +51,22 @@ rerun never re-downloads what it has. `RANDO_OFFLINE=1` forbids network calls en
 from the cache alone (uncached tiles then fail loudly; uncached roads/forest/drive times stay unknown).
 
 Least-cost legs use a terrain-adaptive mesh (`backend/mesh.py`): 10 m cells wherever slope ≥15° or
-impassable, merged 20–160 m cells over gentle uniform ground (≈30 % of the cells remain), hanging
-nodes joined to every touching leaf, octile edge lengths, and a compiled Dijkstra (numba) that stops
-when all targets are settled. Paths are walked back onto 10 m cells so every statistic (max slope,
-share ≥30°) is read from the full-resolution grid. Against a full 10 m search: costs within ~1 %,
-same number of legs, ~3× faster per block.
+impassable and at all routing endpoints, with merged 20–160 m cells over gentle ground of constant
+cost. Every touching traversable leaf is connected through boundary cells. Edge weights price the
+actual 8-connected walk through those cells and integer leaf anchors. CSR construction avoids
+full-grid edge arrays and global sorting. A compiled Dijkstra (numba, GIL released) searches once
+per source for all requested destinations, excluding disconnected targets in advance.
 
-Performance: fall-line propagation uses pointer jumping (≈30× faster than one pass per cell) and the
-scan scripts run 4 blocks in parallel (`backend/blocks.py`); a full 13-block graph rebuild takes ~5 min
-with tiles cached. Cached blocks are skipped, so reruns are incremental.
+Paths and terrain statistics retain the full 10 m grid. Published lines retain every turn, removing
+only collinear intermediate cells. Routing over gentle ground remains approximate: leaf anchors
+can change the optimum, elevation gain, and which legs pass the walking-gain limit. The 15°
+refinement threshold is conservative, not an error bound. Graph scans use `.cache/graph-v2` so
+previously cached graphs with the old metric and line simplification are rebuilt.
+
+Performance: fall-line propagation uses pointer jumping. Graph scans run two blocks in parallel;
+other scanners default to four (`backend/blocks.py`). Cached blocks are skipped, so reruns are
+incremental. `scripts/benchmark_mesh.py` measures mesh construction, routing, and process peak
+memory on reproducible synthetic terrain; its docstring includes a comparison against the old mesh.
 
 Scan pipeline: `scripts/scan_region.py` (faces) → `review.py` → `review_page.py`;
 `scripts/toppturs_scan.py LON LAT MAX_MIN` (summit tours) → `toppturs_page.py`, `toppturs_gpx.py`.

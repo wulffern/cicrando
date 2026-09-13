@@ -22,26 +22,57 @@ logger = logging.getLogger('rando.graph')
 
 
 def line(cells, W, north, step):
-    pts = [list(TO_LL.transform(W + c * 10 + 5, north - r * 10 + -5)) for r, c in cells[::step]]
-    last = cells[-1]
-    pts.append(list(TO_LL.transform(W + last[1] * 10 + 5, north - last[0] * 10 - 5)))
-    return [[round(x, 5), round(y, 5)] for x, y in pts]
+    # Only omit collinear cells. Keep every turn and cap segment length; arbitrary
+    # subsampling can draw a chord through terrain the walked path avoided.
+    cells = np.asarray(cells)
+    keep = np.zeros(len(cells), dtype=bool)
+    keep[::step] = True
+    keep[0] = keep[-1] = True
+    if len(cells) > 2:
+        delta = np.diff(cells, axis=0)
+        keep[1:-1] |= np.any(delta[1:] != delta[:-1], axis=1)
+    selected = cells[keep]
+    if len(selected) == 1:
+        selected = np.repeat(selected, 2, axis=0)
+    lon, lat = TO_LL.transform(W + selected[:, 1] * 10 + 5, north - selected[:, 0] * 10 - 5)
+    pts = np.round(np.column_stack((lon, lat)), 7).tolist()
+    return pts
 
 
 class Router:
     """Least-cost legs on the terrain-adaptive mesh (see backend.mesh), one Dijkstra per source."""
 
-    def __init__(self, costs, slope, refine_deg=15.0):
-        self.leaf, self.crow, self.ccol, self.size, lcost = mesh.build_mesh(costs, slope, refine_deg)
-        self.indptr, self.dst, self.w = mesh.build_graph(self.leaf, self.crow, self.ccol, lcost)
-        self.costs = costs
+    def __init__(self, costs, slope, refine_deg=15.0, endpoints=()):
+        self.costs, self.slope, self.refine_deg = costs, slope, refine_deg
+        self.endpoints = set(map(tuple, endpoints))
+        self._build()
+
+    def _build(self):
+        self.leaf, self.crow, self.ccol, self.size, lcost = mesh.build_mesh(
+            self.costs, self.slope, self.refine_deg, self.endpoints)
+        self.indptr, self.dst, self.w = mesh.build_graph(self.leaf, self.crow, self.ccol, lcost, self.size)
+        self.component = mesh.components(self.indptr, self.dst)
+
+    def _pin(self, cells):
+        # Batch callers should supply all endpoints at construction, avoiding rebuilds.
+        extra = {tuple(c) for c in cells if self.size[self.leaf[tuple(c)]] > 1}
+        if extra:
+            self.endpoints.update(extra)
+            self._build()
 
     def legs(self, source, targets, z, slope, forest, W, north, horizontal, vertical):
         """Legs from one source cell to the reachable target cells; list of (target index, stats)."""
         sr, sc = source
         if not np.isfinite(self.costs[sr, sc]):
             return []
-        ids = [(i, int(self.leaf[r, c])) for i, (r, c) in targets if np.isfinite(self.costs[r, c])]
+        targets = [(i, tuple(c)) for i, c in targets if np.isfinite(self.costs[tuple(c)])]
+        if not targets:
+            return []
+        self._pin([source] + [c for _, c in targets])
+        component = self.component[self.leaf[sr, sc]]
+        ids = [(i, int(self.leaf[c])) for i, c in targets
+               if self.component[self.leaf[c]] == component]
+        target_cells = dict(targets)
         if not ids:
             return []
         dist, pred = mesh.dijkstra(self.indptr, self.dst, self.w, int(self.leaf[sr, sc]), np.array([t for _, t in ids], dtype=np.int32))
@@ -49,7 +80,7 @@ class Router:
         for i, t in ids:
             if not np.isfinite(dist[t]):
                 continue
-            path = mesh.path_cells(pred, self.crow, self.ccol, self.size, t, (sr, sc), tuple(dict(targets)[i]))
+            path = mesh.path_cells(pred, self.crow, self.ccol, self.size, t, (sr, sc), target_cells[i])
             stats = path_stats(path[:, 0], path[:, 1], z, slope, forest, horizontal, vertical)
             stats['line'] = line(path, W, north, 8)
             out.append((i, stats))
@@ -65,7 +96,6 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
     if spots is None:
         raise RuntimeError('Parking/road data unavailable')
     costs = ascent_costs(slope, max_ascent, lower)
-    router = Router(costs, slope)
     smooth = ndimage.uniform_filter(np.nan_to_num(slope, nan=90.0), 3)
     ok = (smooth < upper) & (smooth > 3) & np.isfinite(slope)
     counted = ok & (smooth > lower)
@@ -98,6 +128,11 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
         r, c = cell(s['x'], s['y'])
         if inside(r, c) and np.isfinite(costs[r, c]):
             parkings.append(dict(id=f'{prefix}p{len(parkings)}', cell=(r, c), lonlat=[round(s['lon'], 5), round(s['lat'], 5)], name=s['name'], access=s['access'], road=s['road'], tags=s['tags']))
+    # Run discovery is complete; release full-block scratch rasters before allocating CSR.
+    del smooth, ok, counted, band_len, target, aspect, _
+    endpoints = ([s['cell'] for s in summits] + [p['cell'] for p in parkings]
+                 + [r['bottom_cell'] for r in runs])
+    router = Router(costs, slope, endpoints=endpoints)
     edges = []
     summit_targets = [(i, s['cell']) for i, s in enumerate(summits)]
     parking_targets = [(i, p['cell']) for i, p in enumerate(parkings)]
@@ -110,11 +145,11 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
         b = run['bottom_cell']
         near_s = [(i, c) for i, c in summit_targets if np.hypot(c[0] - b[0], c[1] - b[1]) <= reach]
         near_p = [(i, c) for i, c in parking_targets if np.hypot(c[0] - b[0], c[1] - b[1]) <= walk]
-        for i, st in router.legs(b, near_s, z, slope, forest, W, mosaic.north, horizontal, vertical):
-            edges.append(dict(**{'from': run['id'], 'to': summits[i]['id'], 'kind': 'skin'}, **st))
-        for i, st in router.legs(b, near_p, z, slope, forest, W, mosaic.north, horizontal, vertical):
-            if st['gain_m'] <= walk_gain:
-                edges.append(dict(**{'from': run['id'], 'to': parkings[i]['id'], 'kind': 'walk'}, **st))
+        targets = [(('skin', i), c) for i, c in near_s] + [(('walk', i), c) for i, c in near_p]
+        for (kind, i), st in router.legs(b, targets, z, slope, forest, W, mosaic.north, horizontal, vertical):
+            if kind == 'skin' or st['gain_m'] <= walk_gain:
+                destination = summits[i]['id'] if kind == 'skin' else parkings[i]['id']
+                edges.append(dict(**{'from': run['id'], 'to': destination, 'kind': kind}, **st))
     for s in summits:
         del s['cell']
     for r in runs:
