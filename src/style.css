@@ -23,6 +23,7 @@ body{font-family:var(--font);color:var(--ink);background:var(--paper);-webkit-te
 .sun-dot{background:var(--sun)}.shade-dot{background:var(--shade)}.steep-dot{background:#444;opacity:.6}.nve-steep{background:linear-gradient(90deg,#ff0,#f50,#730000)}.nve-runout{background:linear-gradient(90deg,#9ab1e6,#004da8)}.unknown-dot{background:#888}.aspect-dot{background:var(--aspect)}
 .tour-up{background:#2b6cb0}.tour-down{background:#d9480f}
 .cand-open{background:#d9480f}.cand-trees{background:#2f7d32}.cand-mixed{background:#8a9a2b}
+.warning{margin:0;padding:8px 10px;border-radius:8px;background:#b74d41;color:#fff;font-weight:600;font-size:13px}
 .tour-detail{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--ink);border-radius:8px;background:#fff;font-size:13px}
 .tour-detail strong{display:flex;align-items:center;gap:6px;font-size:15px}
 .cand .rank.spruce{background:#1f5b46}

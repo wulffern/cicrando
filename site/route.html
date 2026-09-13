@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
 :root{--ink:#173d35;--ink2:#3d5c55;--mute:#6b7f7a;--paper:#f7f5ef;--card:#fffdf8;--line:#dfe3dc;--up:#2b6cb0;--down:#d9480f;--walk:#6b7f7a;--park:#173d35;--warn:#b74d41;--ok:#2f8f5b;--maybe:#b7791f}
-*{box-sizing:border-box}html,body{height:100%;margin:0}
+*{box-sizing:border-box}[hidden]{display:none!important}html,body{height:100%;margin:0}
 body{font-family:"Source Sans 3",-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--paper);font-size:15px;line-height:1.4}
 .app{position:fixed;inset:0;display:grid;grid-template-columns:1fr 400px}
 #map{position:relative;min-width:0}
@@ -42,6 +42,7 @@ select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--
 .legend{position:absolute;left:10px;bottom:10px;background:rgba(255,253,248,.92);padding:6px 10px;border-radius:8px;font-size:12px;display:flex;gap:10px;flex-wrap:wrap;z-index:2}
 .legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}.legend i.dot{width:9px;height:9px;border-radius:50%}
 .caution{margin:12px 18px 24px;padding:8px 10px;border-radius:8px;background:#fff5d6;color:#5c4a12;font-size:12.5px}
+.warning{margin:0;padding:10px 18px;background:#b74d41;color:#fff;font-weight:600;font-size:14px;line-height:1.35}
 .sheet-handle{display:none}
 @media (max-width:800px){
  .app{grid-template-columns:1fr}#map{position:absolute;inset:0}
@@ -59,6 +60,7 @@ select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--
  <div id="map"></div>
  <aside class="panel" id="panel">
   <button class="sheet-handle" id="handle" aria-label="Resize panel"><span></span></button>
+  <p class="warning">This is an automatically generated list. I have not checked them all. Do not attempt these if you’re a beginner.</p>
   <div class="head"><div><h1>Route planner</h1><p id="meta">Loading graph…</p></div><a href="./">Tours ›</a></div>
   <div class="step" id="step-start">
    <h2>1 · Park</h2>
@@ -160,7 +162,7 @@ $('gpx').addEventListener('click',()=>{const es=legs();if(!es||!es.length)return
  const name=route.map(label).join(' → ');
  const wpts=route.map(id=>`<wpt lat="${node[id].lonlat[1]}" lon="${node[id].lonlat[0]}"><name>${esc(label(id))}</name></wpt>`).join('');
  const trks=es.map((e,i)=>`<trk><name>${i+1} ${e.kind==='skin'?'Skin up':e.kind==='run'?'Ski':'Walk out'} · ${esc(label(e.to))}</name><desc>${esc(dur(e.hours))}, +${e.gain_m} m, max ${Number(e.max_slope).toFixed(0)}°. Least-cost terrain line, not a checked route.</desc><trkseg>${e.line.map(([lon,lat])=>`<trkpt lat="${lat}" lon="${lon}"/>`).join('')}</trkseg></trk>`).join('');
- const gpx=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rando route planner" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${esc(name)}</name></metadata>${wpts}${trks}</gpx>`;
+ const gpx=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rando route planner" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${esc(name)}</name><desc>This is an automatically generated list. I have not checked them all. Do not attempt these if you're a beginner. Legs are least-cost terrain lines, not checked routes.</desc></metadata>${wpts}${trks}</gpx>`;
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'}));a.download='rando-route.gpx';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
 $('handle').addEventListener('click',()=>{const p=$('panel');p.className=p.classList.contains('peek')?'panel':p.classList.contains('full')?'panel peek':'panel full';});
 async function load(file){G=await (await fetch(file)).json();buildGraph();route=[];$('meta').textContent=`${G.parkings.length} parkings · ${G.summits.length} summits · ${G.runs.length} runs · ${G.edges.length} legs · ${G.origin_name} ${G.generated.slice(0,10)}`;

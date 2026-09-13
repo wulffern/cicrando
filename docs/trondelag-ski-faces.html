@@ -9,6 +9,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font-family:"Source Sans 
 h1,h2,.display{font-family:"Barlow Semi Condensed","Arial Narrow",sans-serif;font-weight:700;letter-spacing:.01em;text-wrap:balance}
 h1{font-size:clamp(30px,4vw,44px);margin:0;line-height:1}
 .lead{max-width:68ch;color:var(--ink2);margin:10px 0 0}
+p.warning{margin:14px 0 0;padding:10px 14px;background:#b74d41;color:#fff;font-weight:600;font-size:15px;border-radius:6px}
 header{display:flex;flex-wrap:wrap;gap:24px 40px;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:18px}
 .stats{display:flex;gap:22px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 .stats div{display:flex;flex-direction:column}.stats b{font-family:"Barlow Semi Condensed",sans-serif;font-size:26px;line-height:1;font-weight:600}.stats span{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.08em}
@@ -44,6 +45,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
  <div><h1>Trøndelag Ski Faces</h1><p class="lead">Fall-line runs with long continuous 20–30° skiing, scanned from Kartverket 10 m terrain across the mountain blocks within about 180 km of Trondheim. Ranked by <em>in-band run length ÷ (1 + approach hours)</em>. Mark rows keep / maybe / skip — your marks stay in this browser.</p></div>
  <div class="stats"><div><b id="s-shown">0</b><span>shown</span></div><div><b id="s-pool">0</b><span>in pool</span></div><div><b>30</b><span>blocks scanned</span></div><div><b>1529</b><span>raw runs</span></div></div>
 </header>
+<p class="warning">This is an automatically generated list. I have not checked them all. Do not attempt these if you’re a beginner.</p>
 <div class="controls">
  <label>Terrain<select id="f-terrain"><option value="all">All</option><option value="open">Open</option><option value="trees">Trees</option><option value="deciduous">Birch / deciduous</option><option value="conifer">Spruce / conifer</option><option value="mixed">Mixed</option></select></label>
  <label>Bottom ≥ m<input id="f-bottom" type="number" value="500" step="50" min="0"></label>

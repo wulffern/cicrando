@@ -139,6 +139,7 @@ export default function App(){
 
    <Section id="tours" title="Toppturer" open={section==="tours"} onToggle={toggle}>
     {tourError?<p className="hint">{tourError}</p>:!tourSet?<p className="hint">Loading tours…</p>:<>
+     <p className="warning">This is an automatically generated list. I have not checked them all. Do not attempt these if you’re a beginner.</p>
      <p className="hint">{tourSet.tours.length} summits within {tourSet.max_drive} min of the scan origin ({tourSet.summits} scanned, {tourSet.generated}). Blue = gentlest ascent line under 35°, orange = best 20–30° descent. Click a summit on the map or a card.</p>
      <div className="grid2">
       <label>Ascent max slope<select value={tourSlope} onChange={e=>setTourSlope(Number(e.target.value))}>{[35,30,28,25].map(v=><option key={v} value={v}>≤ {v}°</option>)}</select></label>

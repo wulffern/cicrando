@@ -15,6 +15,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font-family:"Source Sans 
 h1,h2{font-family:"Barlow Semi Condensed","Arial Narrow",sans-serif;font-weight:700;letter-spacing:.01em;text-wrap:balance}
 h1{font-size:clamp(30px,4vw,44px);margin:0;line-height:1}
 .lead{max-width:70ch;color:var(--ink2);margin:10px 0 0}
+p.warning{margin:14px 0 0;padding:10px 14px;background:#b74d41;color:#fff;font-weight:600;font-size:15px;border-radius:6px}
 header{display:flex;flex-wrap:wrap;gap:24px 40px;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:18px}
 .stats{display:flex;gap:22px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 .stats div{display:flex;flex-direction:column}.stats b{font-family:"Barlow Semi Condensed",sans-serif;font-size:26px;line-height:1;font-weight:600}.stats span{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.08em}
@@ -45,6 +46,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
  <div><h1>Skarvatnet Toppturer</h1><p class="lead">Summits within __DRIVE__ min drive of Skarvatnet (Oppdal), each with the gentlest ascent line the terrain allows from a road — nothing steeper than 35°, and 30–35° avoided where possible — and the best continuous 20–30° descent from near the top. Ranked by descent length. Mark keep / maybe / skip; marks stay in this browser.</p></div>
  <div class="stats"><div><b id="s-shown">0</b><span>shown</span></div><div><b>__N__</b><span>summits in 1 h</span></div><div><b>__ALL__</b><span>summits scanned</span></div></div>
 </header>
+<p class="warning">This is an automatically generated list. I have not checked them all. Do not attempt these if you’re a beginner.</p>
 <div class="controls">
  <label>Ascent max slope ≤<select id="f-slope"><option value="35">35°</option><option value="30">30°</option><option value="28">28°</option><option value="25">25°</option></select></label>
  <label>Ascent ≤ h<input id="f-hours" type="number" value="4.5" step="0.5" min="0"></label>

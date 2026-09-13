@@ -52,7 +52,7 @@ def tour_gpx(t, i):
 
 def wrap(name, parts):
     return ('<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rando toppturs" xmlns="http://www.topografix.com/GPX/1/1">'
-            f'<metadata><name>{escape(name)}</name><desc>Generated {escape(data["generated"])} from Kartverket 10 m terrain. Ascent lines are least-cost terrain paths under 35°, not verified routes. Not a snow-stability assessment.</desc></metadata>'
+            f'<metadata><name>{escape(name)}</name><desc>This is an automatically generated list. I have not checked them all. Do not attempt these if you\'re a beginner. Generated {escape(data["generated"])} from Kartverket 10 m terrain. Ascent lines are least-cost terrain paths under 35°, not verified routes. Not a snow-stability assessment.</desc></metadata>'
             + ''.join(parts) + '</gpx>')
 
 everything = []

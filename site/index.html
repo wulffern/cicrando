@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
 <style>
 :root{--ink:#173d35;--ink2:#3d5c55;--mute:#6b7f7a;--paper:#f7f5ef;--card:#fffdf8;--line:#dfe3dc;--up:#2b6cb0;--down:#d9480f;--birch:#4e8a3a;--spruce:#1f5b46;--warn:#b74d41;--ok:#2f8f5b}
-*{box-sizing:border-box}html,body{height:100%;margin:0}
+*{box-sizing:border-box}[hidden]{display:none!important}html,body{height:100%;margin:0}
 body{font-family:"Source Sans 3",-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--paper);font-size:15px;line-height:1.4}
 .app{position:fixed;inset:0;display:grid;grid-template-columns:1fr 390px}
 #map{position:relative;min-width:0}
@@ -38,6 +38,7 @@ ol{list-style:none;margin:0;padding:12px 18px 24px;display:flex;flex-direction:c
 .legend{position:absolute;left:10px;bottom:10px;background:rgba(255,253,248,.92);padding:6px 10px;border-radius:8px;font-size:12px;display:flex;gap:10px;flex-wrap:wrap;z-index:2}
 .legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
 .caution{margin:0 18px;padding:8px 10px;border-radius:8px;background:#fff5d6;color:#5c4a12;font-size:12.5px}
+.warning{margin:0;padding:10px 18px;background:#b74d41;color:#fff;font-weight:600;font-size:14px;line-height:1.35}
 .sheet-handle{display:none}
 @media (max-width:800px){
  .app{grid-template-columns:1fr}
@@ -56,6 +57,7 @@ ol{list-style:none;margin:0;padding:12px 18px 24px;display:flex;flex-direction:c
  <div id="map"></div>
  <aside class="panel" id="panel">
   <button class="sheet-handle" id="handle" aria-label="Resize panel"><span></span></button>
+  <p class="warning">This is an automatically generated list. I have not checked them all. Do not attempt these if you’re a beginner.</p>
   <div class="head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><div><h1>Toppturer</h1><p id="meta">Loading…</p></div><a href="route.html" style="font-size:13px;color:var(--ink);font-weight:600;white-space:nowrap">Route planner ›</a></div>
   <div class="filters">
    <label>Dataset<select id="f-set"></select></label>
