@@ -92,9 +92,15 @@ def fetch_raster(west: int, south: int, size: int, resolution: int) -> Raster:
                 expected = (west, south, west+size, south+size)
                 if src.crs.to_epsg() != 25833 or not np.allclose(tuple(src.bounds), expected, atol=0.1):
                     raise ValueError('Elevation service returned an unexpected coordinate system or extent')
-            tmp = path.with_suffix('.tmp')
+            # Unique temp name per process: parallel workers may fetch the same tile at once.
+            tmp = path.with_name(f'{path.stem}.{os.getpid()}.tmp')
             tmp.write_bytes(response.content)
-            tmp.replace(path)
+            try:
+                tmp.replace(path)
+            except FileNotFoundError:
+                if not path.exists():
+                    raise
+                tmp.unlink(missing_ok=True)
         with rasterio.open(path) as src:
             z = src.read(1, masked=True).astype('float32').filled(np.nan)
             z[(z < -500) | (z > 9000)] = np.nan

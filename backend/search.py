@@ -212,7 +212,12 @@ def forest_tile(tx, ty):
         response.raise_for_status()
         if not response.headers.get('content-type', '').startswith('image/png'):
             raise ValueError('AR5 WMS returned no image')
-        path.write_bytes(response.content)
+        tmp = path.with_name(f'{path.stem}.{os.getpid()}.tmp')
+        tmp.write_bytes(response.content)
+        try:
+            tmp.replace(path)
+        except FileNotFoundError:
+            tmp.unlink(missing_ok=True)
     rgba = np.array(Image.open(path).convert('RGBA').resize((400, 400), Image.NEAREST))
     classes = np.zeros((400, 400), dtype='uint8')
     for colour, code in TREE_COLOURS.items():
