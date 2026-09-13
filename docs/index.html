@@ -56,7 +56,7 @@ ol{list-style:none;margin:0;padding:12px 18px 24px;display:flex;flex-direction:c
  <div id="map"></div>
  <aside class="panel" id="panel">
   <button class="sheet-handle" id="handle" aria-label="Resize panel"><span></span></button>
-  <div class="head"><h1>Toppturer</h1><p id="meta">Loading…</p></div>
+  <div class="head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><div><h1>Toppturer</h1><p id="meta">Loading…</p></div><a href="route.html" style="font-size:13px;color:var(--ink);font-weight:600;white-space:nowrap">Route planner ›</a></div>
   <div class="filters">
    <label>Dataset<select id="f-set"></select></label>
    <label>Drive ≤ min<input id="f-drive" type="number" value="60" step="5" min="0"></label>
@@ -120,7 +120,7 @@ for(const id of ['f-slope','f-hours','f-run','f-drive','f-sort'])$(id).addEventL
 $('f-nve').addEventListener('change',e=>map.setLayoutProperty('nve','visibility',e.target.checked?'visible':'none'));
 $('handle').addEventListener('click',()=>{const p=$('panel');p.className=p.classList.contains('peek')?'panel':p.classList.contains('full')?'panel peek':'panel full';});
 async function load(file){data=await (await fetch(file)).json();active=null;$('meta').textContent=`${data.tours.length} summits within ${data.max_drive} min of ${data.origin_name||'the origin'} · scanned ${data.generated}`;$('f-drive').value=data.max_drive;render();if(data.tours.length){const b=new maplibregl.LngLatBounds();for(const t of data.tours)b.extend(t.summit);map.fitBounds(b,{padding:40,duration:0});}}
-fetch('data/index.json').then(r=>r.json()).then(list=>{sets=list;$('f-set').innerHTML=list.map((s,i)=>`<option value="${s.file}" ${i===0?'selected':''}>${s.title}</option>`).join('');$('f-set').addEventListener('change',e=>load('data/'+e.target.value));map.on('load',()=>load('data/'+list[0].file));}).catch(()=>{$('meta').textContent='No datasets found in data/. Run scripts/build_site.py.';});
+fetch('data/index.json').then(r=>r.json()).then(idx=>{const list=Array.isArray(idx)?idx:idx.tours;sets=list;$('f-set').innerHTML=list.map((s,i)=>`<option value="${s.file}" ${i===0?'selected':''}>${s.title}</option>`).join('');$('f-set').addEventListener('change',e=>load('data/'+e.target.value));map.on('load',()=>load('data/'+list[0].file));}).catch(()=>{$('meta').textContent='No datasets found in data/. Run scripts/build_site.py.';});
 </script>
 </body>
 </html>

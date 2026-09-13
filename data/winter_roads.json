@@ -1,0 +1,4 @@
+{
+  "_comment": "Manual overrides for winter access. Each entry marks parking spots within radius_m of [lon, lat]. status: 'closed' (road not plowed in winter) or 'open' (plowed, overrides the road-type heuristic). Fill in what you know; nothing here is verified.",
+  "overrides": []
+}

@@ -40,6 +40,12 @@ npx playwright test                    # end-to-end (desktop + iPhone viewport);
 MapLibre + Kartverket + NVE tiles reading `docs/data/*.json`), per-tour GPX under `docs/gpx/`, and
 the review pages. Rebuild after a new scan with `.venv/bin/python scripts/build_site.py` and commit.
 
+Route planner (`docs/route.html`): chains parkings → summits → runs → … → back to the car through a
+precomputed graph (`scripts/graph_scan.py LON LAT NAME` → `data/graph-<name>-<date>.json`): least-cost
+skin/walk legs on 10 m terrain, fall-line runs, OSM parkings with winter-access class (OSM/NVDB tags,
+road class, `data/winter_roads.json` overrides), OSRM drive times. Shortest-time search in the browser,
+GPX export, shareable links.
+
 Scan pipeline: `scripts/scan_region.py` (faces) → `review.py` → `review_page.py`;
 `scripts/toppturs_scan.py LON LAT MAX_MIN` (summit tours) → `toppturs_page.py`, `toppturs_gpx.py`.
 

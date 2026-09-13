@@ -10,6 +10,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 docs = root / 'docs'; (docs / 'data').mkdir(parents=True, exist_ok=True); (docs / 'gpx').mkdir(exist_ok=True)
 shutil.copy(root / 'site/index.html', docs / 'index.html')
+shutil.copy(root / 'site/route.html', docs / 'route.html')
 (docs / '.nojekyll').touch()
 index = []
 for src in sorted((root / 'data').glob('*toppturer*.json'), reverse=True):
@@ -27,7 +28,12 @@ for src in sorted((root / 'data').glob('*toppturer*.json'), reverse=True):
     data.setdefault('origin_name', 'Skarvatnet' if abs(data['origin'][0] - 9.549) < 0.01 else None)
     (docs / 'data' / src.name).write_text(json.dumps(data, ensure_ascii=False))
     index.append(dict(file=src.name, title=f"{data.get('origin_name') or 'Origin'} · {data['generated'][:10]} · {len(data['tours'])} tours"))
-(docs / 'data/index.json').write_text(json.dumps(index, ensure_ascii=False))
+graphs = []
+for src in sorted((root / 'data').glob('graph-*.json'), reverse=True):
+    g = json.loads(src.read_text())
+    shutil.copy(src, docs / 'data' / src.name)
+    graphs.append(dict(file=src.name, title=f"{g.get('origin_name') or 'Origin'} · {g['generated'][:10]} · {len(g['summits'])} summits, {len(g['runs'])} runs"))
+(docs / 'data/index.json').write_text(json.dumps(dict(tours=index, graphs=graphs), ensure_ascii=False))
 for cache, script, name in (('review.json', 'review_page.py', 'trondelag-ski-faces.html'), ('toppturs.json', 'toppturs_page.py', 'skarvatnet-toppturer.html')):
     if (root / '.cache' / cache).exists():
         subprocess.run([sys.executable, str(root / 'scripts' / script), str(docs / name)], check=True, cwd=root)

@@ -37,6 +37,14 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    descent = best 20–30° run starting within 800 m / 200 m below the summit; drive time from an
    origin via OSRM. First run: 13 blocks around Skarvatnet, 476 summits, 169 within 60 min.
    Not yet in the app UI — script + review page only.
+0c. Route graph + planner (2026-09-13, `backend/loops.py`, `backend/graph.py`, `scripts/graph_scan.py`,
+   `site/route.html`): tours start and end at OSM parking spots; winter access classed plowed /
+   unknown / closed (OSM tags, NVDB 810 "Ingen vinterdrift", `data/winter_roads.json`); legs are
+   least-cost paths from parkings and run bottoms to summits (≤7 km) and from run bottoms to parkings
+   (≤5 km, ≤250 m climb). The static page chains legs by shortest time — loops and multi-run days —
+   and exports GPX. Skarvatnet graph: 212 parkings (19 plowed, 193 unknown), 476 summits, 344 runs,
+   4,308 legs. Limits: NVDB winter classes are sparse here, so most seter roads stay "unknown";
+   legs ignore NVE runout zones, rivers, cornices and private land.
 1. Choose date and outing window; scrub a map time slider.
 2. Set editable minimum/maximum slope and aspect. South and north presets each span ±45° by default.
 3. Choose seek sunlight, seek shade, or aspect-only terrain matching. Display potential direct sunlight separately from forecast cloud cover.
