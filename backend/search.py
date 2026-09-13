@@ -218,7 +218,13 @@ def forest_tile(tx, ty):
             tmp.replace(path)
         except FileNotFoundError:
             tmp.unlink(missing_ok=True)
-    rgba = np.array(Image.open(path).convert('RGBA').resize((400, 400), Image.NEAREST))
+    try:
+        rgba = np.array(Image.open(path).convert('RGBA').resize((400, 400), Image.NEAREST))
+    except (OSError, SyntaxError):
+        # A truncated file from an interrupted write: drop it and fetch again once.
+        path.unlink(missing_ok=True)
+        logger.warning('Corrupt AR5 tile %s_%s replaced', tx, ty)
+        return forest_tile(tx, ty)
     classes = np.zeros((400, 400), dtype='uint8')
     for colour, code in TREE_COLOURS.items():
         classes[(rgba[..., 3] > 0) & np.all(rgba[..., :3] == colour, axis=-1)] = code
