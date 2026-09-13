@@ -2,7 +2,7 @@
 
 ## Agreed goal and scope
 
-Build a responsive browser app for desktop and iPhone that helps find and inspect ski faces, initially in mountain areas roughly 2–3 hours' drive from Trondheim. Trollheimen/Oppdal and Meråker are initial exploration areas. The driving radius is approximate; link starting points to driving directions rather than calculating a driving-time filter.
+Build a responsive browser app for desktop and iPhone that helps find and inspect ski faces, initially in mountain areas roughly 2–3 hours' drive from Trondheim. Trollheimen/Oppdal and Meråker are initial exploration areas. Graph scans support an origin, calculated one-way driving-time filtering to parkings, and explicit circle/square geographic coverage. Interactive origin selection and automatic isochrones remain future work.
 
 The default ski-face preference is strictly **20° < slope < 30°**. Gentler approaches are allowed and the entire drawn ascent is assessed separately. Support south-facing terrain for autumn/early-winter sunlight and north-facing terrain for spring shade, with date- and time-specific mountain shadows. Estimate whether a user-drawn or imported ascent takes 3–4 hours.
 
@@ -70,7 +70,7 @@ Verify service access, numerical output, local coverage, attribution/caching ter
   nearest road node (lower bound; winter plowing and parking unknown). Sun hours per candidate use
   100 m horizons only. Known limits: no tree density/spacing (OSM says forest, not skiability);
   no slope-width measure; clusters may split one face into several entries.
-- Deferred: automatic tour generation, calculated road-travel filtering, offline navigation, native apps, accounts, snow-stability prediction.
+- Deferred: interactive origin selection, automatic road-network isochrones, offline navigation, native apps, accounts, snow-stability prediction.
 
 ## Delivery and validation
 
@@ -116,3 +116,30 @@ zones and consider NVE layers; sunlight field validation against independent sol
 (delivery step 2 partly done via unit geometry tests only); 1 m terrain check of selected faces;
 real-device iPhone Safari check (only emulated viewport so far); Claude-in-Chrome extension was not
 connected this session.
+
+## Origin and driving-time regions (implemented 2026-09-13)
+
+Replace the original approximate driving-radius scope with an origin, an optional maximum one-way
+road travel time, and explicit circle (radius) or square (side length) coverage. This increment is
+CLI-first; automatic isochrones and an interactive origin picker remain deferred.
+
+- Generate intersecting 28 km blocks on the existing UTM lattice instead of requiring a block list.
+- Discover parkings and calculate driving times before allocating terrain meshes. Keep unknown
+  times and missing parking coverage explicit; filter winter access independently.
+- Select terrain blocks within the ski-approach distance of eligible parkings, preserving margins.
+- Cache complete terrain graphs independently of origin/time/access filters, keyed by routing
+  settings and algorithm version. Merge only selected blocks and produce query-specific results.
+- Preserve positional CLI usage; add named origin, shape, radius/side, hours, access, and plan-only
+  options. A supplied driving-time limit always operates within declared geographic coverage.
+- Respect offline mode for name enrichment as well as parking, driving, and terrain data.
+- Validated circle/square boundaries, negative coordinates, distinct origins, unknown/unreachable
+  parking, cache isolation, CLI compatibility, buffer selection, and a complete mocked scan.
+  Backend suite: 44 passing tests. An offline Skarvatnet smoke run reported an uncached driving
+  time as unknown, scheduled no terrain work, and wrote `complete: false` as expected.
+
+### Road-access steering
+
+Terrain selection is based on eligible parkings rather than all maps in the geographic envelope.
+A configurable `--terrain-buffer-km 20` selects blocks near those parkings while preserving the
+12 km ski-leg limit and 12 km per-block margin. This avoids excluding trailheads on smaller roads.
+Main-road-only buffers remain optional future work; unmapped parkings remain a coverage limitation.

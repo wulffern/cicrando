@@ -1,0 +1,70 @@
+"""Metric scan coverage on the legacy 28 km UTM lattice; no elevation downloads."""
+from dataclasses import dataclass
+import math
+
+from .terrain import TO_UTM
+
+BLOCK_M = 28000
+GRID_ORIGIN = (24000, 12000)  # Preserves the existing 164000/192000/... block coordinates.
+
+
+@dataclass(frozen=True)
+class Region:
+    origin: tuple[float, float]
+    shape: str = 'circle'
+    extent_km: float = 60  # Radius for a circle, full side length for a square.
+
+    def __post_init__(self):
+        lon, lat = self.origin
+        if not (math.isfinite(lon) and math.isfinite(lat) and -180 <= lon <= 180 and -90 < lat < 90):
+            raise ValueError('Origin must be finite longitude/latitude coordinates')
+        if self.shape not in ('circle', 'square') or not math.isfinite(self.extent_km) or self.extent_km <= 0:
+            raise ValueError('Choose a circle or square with a positive finite extent')
+        if not all(map(math.isfinite, self.centre)):
+            raise ValueError('Origin cannot be projected into UTM zone 33')
+
+    @property
+    def centre(self):
+        return TO_UTM.transform(*self.origin)
+
+    @property
+    def half_extent(self):
+        return self.extent_km * (1000 if self.shape == 'circle' else 500)
+
+    def contains(self, x, y):
+        ox, oy = self.centre
+        dx, dy = abs(x - ox), abs(y - oy)
+        return math.hypot(dx, dy) <= self.half_extent if self.shape == 'circle' else max(dx, dy) <= self.half_extent
+
+    def blocks(self):
+        return intersecting_blocks(*self.centre, self.half_extent, self.shape)
+
+    def metadata(self):
+        return dict(shape=self.shape, **{('radius_km' if self.shape == 'circle' else 'side_km'): self.extent_km},
+                    crs='EPSG:25833', origin=list(self.origin))
+
+
+def intersecting_blocks(x, y, radius, shape='circle'):
+    """Include boundary intersections, not just block centres. Radius is square half-side."""
+    gx, gy = GRID_ORIGIN
+    # Include the block on either side when a bound lies exactly on a grid line.
+    ix0, iy0 = math.ceil((x - radius - gx) / BLOCK_M) - 1, math.ceil((y - radius - gy) / BLOCK_M) - 1
+    ix1, iy1 = math.floor((x + radius - gx) / BLOCK_M), math.floor((y + radius - gy) / BLOCK_M)
+    blocks = []
+    for iy in range(iy0, iy1 + 1):
+        for ix in range(ix0, ix1 + 1):
+            west, south = gx + ix * BLOCK_M, gy + iy * BLOCK_M
+            dx = max(west - x, 0, x - west - BLOCK_M)
+            dy = max(south - y, 0, y - south - BLOCK_M)
+            if shape == 'circle' and math.hypot(dx, dy) > radius:
+                continue
+            blocks.append(dict(x=west, y=south, dist_km=math.hypot(west + BLOCK_M / 2 - x, south + BLOCK_M / 2 - y) / 1000))
+    return sorted(blocks, key=lambda b: (b['dist_km'], b['x'], b['y']))
+
+
+def approach_blocks(parkings, reach_km=12):
+    blocks = {}
+    for p in parkings:
+        for b in intersecting_blocks(p['x'], p['y'], reach_km * 1000):
+            blocks[b['x'], b['y']] = b
+    return sorted(blocks.values(), key=lambda b: (b['x'], b['y']))
