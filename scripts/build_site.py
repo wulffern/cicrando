@@ -10,7 +10,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 docs = root / 'docs'; (docs / 'data').mkdir(parents=True, exist_ok=True); (docs / 'gpx').mkdir(exist_ok=True)
 shutil.copy(root / 'site/index.html', docs / 'index.html')
-shutil.copy(root / 'site/route.html', docs / 'route.html')
+(docs / 'route.html').unlink(missing_ok=True)
 (docs / '.nojekyll').touch()
 index = []
 for src in sorted((root / 'data').glob('*toppturer*.json'), reverse=True):

@@ -36,9 +36,10 @@ npx playwright test                    # end-to-end (desktop + iPhone viewport);
 
 ## Static site (GitHub Pages)
 
-`docs/` is a static site published by `.github/workflows/pages.yml`: a tour viewer (`index.html`,
-MapLibre + Kartverket + NVE tiles reading `docs/data/*.json`), per-tour GPX under `docs/gpx/`, and
-the review pages. Rebuild after a new scan with `.venv/bin/python scripts/build_site.py` and commit.
+`docs/` is a static site published by `.github/workflows/pages.yml`: the topptur planner
+(`index.html`, MapLibre + Kartverket + NVE tiles reading `docs/data/graph-*.json`), GPX under
+`docs/gpx/`, and the review pages. Corridor scans: `scripts/corridor_scan.py NAME [hours] [buffer_km]`
+(OSRM route geometries buffered into a coverage region; `backend/regions.py::Corridor`). Rebuild after a new scan with `.venv/bin/python scripts/build_site.py` and commit.
 
 Topptur planner (`docs/route.html`): searchable summit list; each summit shows its best loop —
 parking → skin up → ski → back to the same car — with alternative parkings/runs, from a precomputed graph (`scripts/graph_scan.py LON LAT NAME` → `data/graph-<name>-<date>.json`): least-cost

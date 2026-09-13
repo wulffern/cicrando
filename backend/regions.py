@@ -68,3 +68,66 @@ def approach_blocks(parkings, reach_km=12):
         for b in intersecting_blocks(p['x'], p['y'], reach_km * 1000):
             blocks[b['x'], b['y']] = b
     return sorted(blocks.values(), key=lambda b: (b['x'], b['y']))
+
+
+class Corridor(Region):
+    """Coverage within `extent_km` of one or more driving routes (OSRM geometry, cached)."""
+
+    def __init__(self, origin, legs, extent_km=15, name='corridor'):
+        object.__setattr__(self, 'origin', tuple(origin)); object.__setattr__(self, 'shape', 'corridor'); object.__setattr__(self, 'extent_km', extent_km)
+        object.__setattr__(self, 'legs', [[tuple(p) for p in leg] for leg in legs]); object.__setattr__(self, 'name', name)
+        object.__setattr__(self, '_xy', self._route_points())
+
+    def __post_init__(self):
+        pass
+
+    def _route_points(self):
+        import json, hashlib
+        from pathlib import Path
+        import httpx
+        import numpy as np
+        pts = []
+        for leg in self.legs:
+            key = hashlib.sha256(json.dumps(leg).encode()).hexdigest()[:16]
+            cache = Path('.cache') / f'osrm_route_{key}.json'
+            if cache.exists():
+                coords = json.loads(cache.read_text())
+            else:
+                path = ';'.join(f'{lon:.5f},{lat:.5f}' for lon, lat in leg)
+                r = httpx.get(f'https://router.project-osrm.org/route/v1/driving/{path}', params=dict(overview='full', geometries='geojson'),
+                              timeout=60, headers={'User-Agent': 'cicrando/0.1 terrain planner'})
+                r.raise_for_status()
+                coords = r.json()['routes'][0]['geometry']['coordinates']
+                cache.parent.mkdir(parents=True, exist_ok=True); cache.write_text(json.dumps(coords))
+            pts.extend(coords)
+        lon, lat = np.array(pts).T
+        x, y = TO_UTM.transform(lon, lat)
+        return np.column_stack([x, y])
+
+    @property
+    def half_extent(self):
+        return self.extent_km * 1000
+
+    def contains(self, x, y):
+        import numpy as np
+        return bool(np.hypot(self._xy[:, 0] - x, self._xy[:, 1] - y).min() <= self.half_extent)
+
+    def blocks(self):
+        import numpy as np
+        gx, gy = GRID_ORIGIN
+        found = {}
+        for x, y in self._xy[::5]:
+            for b in intersecting_blocks(float(x), float(y), self.half_extent, 'square'):
+                found[b['x'], b['y']] = b
+        ox, oy = self.centre
+        out = []
+        for b in found.values():
+            cx, cy = b['x'] + BLOCK_M / 2, b['y'] + BLOCK_M / 2
+            dx = np.maximum(0, np.maximum(b['x'] - self._xy[:, 0], self._xy[:, 0] - b['x'] - BLOCK_M))
+            dy = np.maximum(0, np.maximum(b['y'] - self._xy[:, 1], self._xy[:, 1] - b['y'] - BLOCK_M))
+            if np.hypot(dx, dy).min() <= self.half_extent:
+                out.append(dict(x=b['x'], y=b['y'], dist_km=math.hypot(cx - ox, cy - oy) / 1000))
+        return sorted(out, key=lambda b: (b['dist_km'], b['x'], b['y']))
+
+    def metadata(self):
+        return dict(shape='corridor', buffer_km=self.extent_km, legs=self.legs, crs='EPSG:25833', origin=list(self.origin), name=self.name)
