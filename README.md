@@ -45,6 +45,10 @@ parking → skin up → ski → back to the same car — with alternative parkin
 skin/walk legs on 10 m terrain, fall-line runs, OSM parkings with winter-access class (OSM/NVDB tags,
 road class, `data/winter_roads.json` overrides), OSRM drive times. GPX export, shareable links.
 
+Performance: fall-line propagation uses pointer jumping (≈30× faster than one pass per cell) and the
+scan scripts run 4 blocks in parallel (`backend/blocks.py`); a full 13-block graph rebuild takes ~5 min
+with tiles cached. Cached blocks are skipped, so reruns are incremental.
+
 Scan pipeline: `scripts/scan_region.py` (faces) → `review.py` → `review_page.py`;
 `scripts/toppturs_scan.py LON LAT MAX_MIN` (summit tours) → `toppturs_page.py`, `toppturs_gpx.py`.
 

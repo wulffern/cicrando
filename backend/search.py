@@ -87,14 +87,25 @@ def fall_line_drop(z, ok, counted):
     ok_t = ok.ravel()[tgt]
     inband = counted.ravel()[idx]
     increments = [dz, dl, np.where(inband, dz, 0), np.where(inband, dl, 0)]  # total drop, total length, band drop, band length
-    sums = [np.zeros(rows * cols, dtype='float32') for _ in increments]
-    for _ in range(MAX_ITER):
-        new = [np.where(ok_t, inc + acc[tgt], 0) for inc, acc in zip(increments, sums)]  # a step into steeper terrain does not count
-        if all(np.array_equal(n, acc[idx]) for n, acc in zip(new, sums)):
+    # Pointer jumping: each pass doubles the chain length already summed, so long runs converge in
+    # ~log2(length) passes instead of one pass per cell. A step into terrain that is not `ok`
+    # contributes nothing and ends the chain (its target becomes a sink).
+    n = len(idx)
+    pos = np.full(rows * cols, -1, dtype=np.int64); pos[idx] = np.arange(n)
+    nxt = np.where(ok_t, pos[tgt], -1)                       # local index of the next chain cell, -1 = end
+    sums = [np.where(ok_t, inc, 0).astype('float32') for inc in increments]
+    for _ in range(64):
+        live = nxt >= 0
+        if not live.any():
             break
-        for n, acc in zip(new, sums):
-            acc[idx] = n
-    return [acc.reshape(z.shape) for acc in sums], target
+        j = nxt[live]
+        for acc in sums:
+            acc[live] += acc[j]
+        nxt[live] = nxt[j]
+    full = [np.zeros(rows * cols, dtype='float32') for _ in sums]
+    for f, acc in zip(full, sums):
+        f[idx] = acc
+    return [f.reshape(z.shape) for f in full], target
 
 
 def overpass(query, timeout):
