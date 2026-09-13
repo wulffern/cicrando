@@ -30,7 +30,8 @@ export default function MapView(props:Props){
    m.on('mouseenter','candidates-halo',()=>{m.getCanvas().style.cursor='pointer';});m.on('mouseleave','candidates-halo',()=>{m.getCanvas().style.cursor=latest.current.drawing?'crosshair':'';});
    m.addSource('tours',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
    m.addLayer({id:'tours-halo',type:'line',source:'tours',filter:['==',['geometry-type'],'LineString'],paint:{'line-color':'#fff','line-width':['case',['get','active'],8,4],'line-opacity':['case',['get','active'],0.95,0.6]}});
-   m.addLayer({id:'tours',type:'line',source:'tours',filter:['==',['geometry-type'],'LineString'],paint:{'line-color':['match',['get','leg'],'up','#2b6cb0','#d9480f'],'line-width':['case',['get','active'],4,2],'line-opacity':['case',['get','active'],1,0.55],'line-dasharray':['case',['==',['get','leg'],'up'],['literal',[1,0]],['literal',[2,1.2]]]}});
+   m.addLayer({id:'tours-up',type:'line',source:'tours',filter:['==',['get','leg'],'up'],paint:{'line-color':'#2b6cb0','line-width':['case',['get','active'],4,2],'line-opacity':['case',['get','active'],1,0.55]}});
+   m.addLayer({id:'tours-down',type:'line',source:'tours',filter:['==',['get','leg'],'down'],paint:{'line-color':'#d9480f','line-width':['case',['get','active'],4,2],'line-opacity':['case',['get','active'],1,0.55],'line-dasharray':[2,1.2]}});
    m.addLayer({id:'tour-summits',type:'circle',source:'tours',filter:['==',['geometry-type'],'Point'],paint:{'circle-radius':['case',['get','active'],7,4.5],'circle-color':'#173d35','circle-stroke-color':'#fff','circle-stroke-width':2}});
    m.on('click','tour-summits',e=>{const i=e.features?.[0]?.properties?.i;if(i!==undefined){latest.current.onTour(Number(i));e.preventDefault();}});
    m.on('click','tours-halo',e=>{const i=e.features?.[0]?.properties?.i;if(i!==undefined){latest.current.onTour(Number(i));e.preventDefault();}});

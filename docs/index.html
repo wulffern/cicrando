@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#173d35">
+<title>Rando · Toppturer</title>
+<meta name="description" content="Summit ski tours around Oppdal: gentlest ascent line, best 20–30° descent, drive time and GPX.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+:root{--ink:#173d35;--ink2:#3d5c55;--mute:#6b7f7a;--paper:#f7f5ef;--card:#fffdf8;--line:#dfe3dc;--up:#2b6cb0;--down:#d9480f;--birch:#4e8a3a;--spruce:#1f5b46;--warn:#b74d41;--ok:#2f8f5b}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{font-family:"Source Sans 3",-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--paper);font-size:15px;line-height:1.4}
+.app{position:fixed;inset:0;display:grid;grid-template-columns:1fr 390px}
+#map{position:relative;min-width:0}
+.panel{background:var(--paper);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column;-webkit-overflow-scrolling:touch}
+.head{padding:16px 18px 12px;background:var(--card);border-bottom:1px solid var(--line)}
+h1{font-family:"Barlow Semi Condensed",sans-serif;font-size:24px;margin:0;line-height:1}
+.head p{margin:4px 0 0;color:var(--mute);font-size:13px}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;padding:12px 18px;border-bottom:1px solid var(--line)}
+label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);width:100%}
+.check{grid-column:1/-1;flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-weight:500;font-size:13px}
+.count{grid-column:1/-1;font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.detail{margin:12px 18px 0;padding:12px;border:1px solid var(--ink);border-radius:10px;background:#fff;font-size:13px;display:none}
+.detail.on{display:block}.detail h2{font-family:"Barlow Semi Condensed",sans-serif;font-size:19px;margin:0 0 4px}
+.detail p{margin:2px 0}.detail .links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.detail a{display:inline-flex;padding:6px 10px;border-radius:8px;border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:600;font-size:13px;background:#fff}
+.detail a.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.warn{color:var(--warn);font-weight:600}.ok{color:var(--ok);font-weight:600}
+ol{list-style:none;margin:0;padding:12px 18px 24px;display:flex;flex-direction:column;gap:6px}
+.card{width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 10px;font:inherit;color:var(--ink);cursor:pointer;display:grid;grid-template-columns:26px 1fr;gap:2px 8px;font-size:13px;font-variant-numeric:tabular-nums}
+.card.on{border-color:var(--ink);box-shadow:0 0 0 2px rgba(23,61,53,.15)}
+.card .rank{grid-row:1/span 3;font-weight:800;color:#fff;border-radius:6px;display:grid;place-items:center;height:24px;background:#888}
+.card .rank.deciduous{background:var(--birch)}.card .rank.conifer{background:var(--spruce)}.card .rank.open{background:var(--down)}
+.card strong{grid-column:2}.card span{grid-column:2;color:var(--ink2)}
+.legend{position:absolute;left:10px;bottom:10px;background:rgba(255,253,248,.92);padding:6px 10px;border-radius:8px;font-size:12px;display:flex;gap:10px;flex-wrap:wrap;z-index:2}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+.caution{margin:0 18px;padding:8px 10px;border-radius:8px;background:#fff5d6;color:#5c4a12;font-size:12.5px}
+.sheet-handle{display:none}
+@media (max-width:800px){
+ .app{grid-template-columns:1fr}
+ #map{position:absolute;inset:0}
+ .panel{position:absolute;left:0;right:0;bottom:0;height:50vh;border-left:0;border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.15);z-index:5;transition:height .25s;padding-bottom:env(safe-area-inset-bottom)}
+ .panel.peek{height:120px;overflow:hidden}.panel.full{height:calc(100% - 8px)}
+ .sheet-handle{display:block;position:sticky;top:0;background:var(--card);border:0;width:100%;padding:8px 0 4px;z-index:2}
+ .sheet-handle span{display:block;width:40px;height:5px;border-radius:3px;background:#c9cfc8;margin:0 auto}
+ .legend{bottom:calc(50vh + 10px)}.panel.peek~.legend{bottom:130px}
+ select,input{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+ <div id="map"></div>
+ <aside class="panel" id="panel">
+  <button class="sheet-handle" id="handle" aria-label="Resize panel"><span></span></button>
+  <div class="head"><h1>Toppturer</h1><p id="meta">Loading…</p></div>
+  <div class="filters">
+   <label>Dataset<select id="f-set"></select></label>
+   <label>Drive ≤ min<input id="f-drive" type="number" value="60" step="5" min="0"></label>
+   <label>Ascent max slope<select id="f-slope"><option value="35">≤ 35°</option><option value="30">≤ 30°</option><option value="28">≤ 28°</option><option value="25">≤ 25°</option></select></label>
+   <label>Ascent ≤ h<input id="f-hours" type="number" value="4.5" step="0.5" min="0"></label>
+   <label>Descent ≥ m<input id="f-run" type="number" value="300" step="50" min="0"></label>
+   <label>Sort<select id="f-sort"><option value="run">Descent length</option><option value="hours">Ascent time</option><option value="drive">Drive</option><option value="elev">Elevation</option></select></label>
+   <label class="check"><input id="f-nve" type="checkbox" checked style="width:auto">NVE steepness & runout</label>
+   <span class="count" id="count"></span>
+  </div>
+  <div class="detail" id="detail"></div>
+  <ol id="list"></ol>
+  <p class="caution">Ascent lines are what the terrain permits under 35° on 10 m data — not checked routes. Drive times are summer roads. Nothing here is a snow-stability assessment: read the NVE layers and the Varsom forecast.</p>
+  <p class="caution" style="background:none;color:var(--mute);margin-bottom:24px">Terrain © Kartverket · steepness/runout © NVE · roads © OpenStreetMap · forest © NIBIO AR5 · <a href="https://github.com/wulffern/cicrando">source</a></p>
+ </aside>
+ <div class="legend"><span><i style="background:var(--up)"></i>Ascent</span><span><i style="background:var(--down)"></i>Descent</span><span><i style="background:#ff0;border-top:3px solid #730000"></i>NVE steepness from 27°</span><span><i style="background:#4c9bff"></i>NVE runout</span></div>
+</div>
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const compass=d=>d==null?'?':['N','NE','E','SE','S','SW','W','NW'][Math.round(d/45)%8];
+const dur=h=>h==null?'?':`${Math.floor(h)}h ${String(Math.round((h%1)*60)).padStart(2,'0')}`;
+let sets=[],data=null,rows=[],active=null;
+const map=new maplibregl.Map({container:'map',center:[9.55,62.69],zoom:10.2,minZoom:6,maxZoom:17,attributionControl:{compact:true},style:{version:8,sources:{
+ topo:{type:'raster',tiles:['https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'],tileSize:256,attribution:'© <a href="https://kartverket.no">Kartverket</a>'},
+ nve:{type:'raster',tiles:['https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_med_utlop_2024/MapServer/tile/{z}/{y}/{x}'],tileSize:256,minzoom:5,maxzoom:16,attribution:'© <a href="https://varsom.no">NVE</a>'},
+ tours:{type:'geojson',data:{type:'FeatureCollection',features:[]}}},
+ layers:[{id:'topo',type:'raster',source:'topo',paint:{'raster-saturation':-0.5}},{id:'nve',type:'raster',source:'nve',paint:{'raster-opacity':0.4}},
+ {id:'halo',type:'line',source:'tours',filter:['==',['geometry-type'],'LineString'],paint:{'line-color':'#fff','line-width':['case',['get','active'],8,4],'line-opacity':['case',['get','active'],.95,.6]}},
+ {id:'up',type:'line',source:'tours',filter:['==',['get','leg'],'up'],paint:{'line-color':'#2b6cb0','line-width':['case',['get','active'],4,2],'line-opacity':['case',['get','active'],1,.6]}},
+ {id:'down',type:'line',source:'tours',filter:['==',['get','leg'],'down'],paint:{'line-color':'#d9480f','line-width':['case',['get','active'],4,2],'line-opacity':['case',['get','active'],1,.6],'line-dasharray':[2,1.2]}},
+ {id:'summits',type:'circle',source:'tours',filter:['==',['geometry-type'],'Point'],paint:{'circle-radius':['case',['get','active'],7,4.5],'circle-color':'#173d35','circle-stroke-color':'#fff','circle-stroke-width':2}}]}});
+map.addControl(new maplibregl.NavigationControl({showCompass:true}),'top-right');
+map.addControl(new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},trackUserLocation:true}),'top-right');
+for(const l of ['summits','halo']){map.on('click',l,e=>{const i=e.features?.[0]?.properties?.i;if(i!==undefined){pick(Number(i));e.preventDefault();}});map.on('mouseenter',l,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',l,()=>map.getCanvas().style.cursor='');}
+function filtered(){
+ const sl=+$('f-slope').value,h=+$('f-hours').value,run=+$('f-run').value,dr=+$('f-drive').value,s=$('f-sort').value;
+ const r=data.tours.filter(t=>t.ascent&&t.ascent.max_slope<=sl&&t.ascent.hours<=h&&(t.drive_min??999)<=dr&&(run===0||(t.descent&&t.descent.band_length_m>=run)));
+ r.sort((x,y)=>s==='run'?((y.descent?.band_length_m||0)-(x.descent?.band_length_m||0)):s==='hours'?x.ascent.hours-y.ascent.hours:s==='drive'?(x.drive_min??999)-(y.drive_min??999):y.elevation-x.elevation);
+ return r;
+}
+function draw(){
+ map.getSource('tours').setData({type:'FeatureCollection',features:rows.flatMap((t,i)=>{const a=i===active;const f=[{type:'Feature',properties:{i,active:a,leg:'up'},geometry:{type:'LineString',coordinates:t.ascent.line}},{type:'Feature',properties:{i,active:a},geometry:{type:'Point',coordinates:t.summit}}];
+  if(t.descent)f.push({type:'Feature',properties:{i,active:a,leg:'down'},geometry:{type:'LineString',coordinates:t.descent.start_offset_m>60?[t.summit,...t.descent.line]:t.descent.line}});return f;})});
+}
+function tree(d){return !d||!d.forest_share?'open':`${d.forest_type==='deciduous'?'birch':d.forest_type==='conifer'?'spruce':'mixed'} ${d.forest_share}%`}
+function render(){
+ rows=filtered();$('count').textContent=`${rows.length} of ${data.tours.length} tours`;
+ $('list').innerHTML=rows.slice(0,80).map((t,i)=>`<li><button class="card ${i===active?'on':''}" data-i="${i}"><span class="rank ${t.descent?(t.descent.forest_share?t.descent.forest_type:'open'):''}">${i+1}</span><strong>${t.name||'Unnamed'} ${Math.round(t.elevation)} m · ${t.drive_min} min drive</strong><span>Up ${dur(t.ascent.hours)}, +${t.ascent.gain_m} m, max ${t.ascent.max_slope.toFixed(0)}°${t.ascent.share_over_30>0?` <em class="warn">(${t.ascent.share_over_30}% on 30–35°)</em>`:''}</span><span>${t.descent?`Down ${t.descent.band_length_m} m ${compass(t.descent.aspect)} · ${Math.round(t.descent.drop)} m · ${tree(t.descent)}`:'No 20–30° run near the top'}</span></button></li>`).join('')+(rows.length>80?'<li class="count">Showing 80; tighten the filters.</li>':'');
+ const t=active===null?null:rows[active];const d=$('detail');
+ if(!t){d.className='detail';d.innerHTML='';}else{const a=t.ascent,de=t.descent;d.className='detail on';d.innerHTML=`<h2>${t.name||'Unnamed summit'} ${Math.round(t.elevation)} m</h2>
+  <p><b>Up ${dur(a.hours)}</b> · +${a.gain_m} m over ${(a.length_m/1000).toFixed(1)} km · max <b class="${a.max_slope>=30?'warn':'ok'}">${a.max_slope.toFixed(0)}°</b>, mean ${a.mean_slope.toFixed(0)}° · ${a.share_over_30>0?`<b class="warn">${a.share_over_30}% on 30–35°</b>`:'never over 30°'} · forest ${a.forest_share??'?'}%</p>
+  ${de?`<p><b>Down ${de.band_length_m} m</b> of 20–30° · ${compass(de.aspect)} ${Math.round(de.aspect)}° · ${Math.round(de.drop)} m drop (${Math.round(de.top_elevation)}→${Math.round(de.bottom_elevation)} m) · max ${de.max_slope.toFixed(0)}°${de.steep_share>0?` <b class="warn">· ${de.steep_share}% ≥30°</b>`:''} · ${tree(de)} · starts ${de.start_offset_m} m from summit · ends ${de.end_to_car_km} km from car</p>`:'<p>No 300 m run of 20–30° near the top.</p>'}
+  <p>Drive ${t.drive_min} min · car at ${a.start[1].toFixed(4)}, ${a.start[0].toFixed(4)}</p>
+  <div class="links">${t.gpx?`<a class="primary" href="${t.gpx}" download>GPX</a>`:''}<a target="_blank" rel="noreferrer" href="https://norgeskart.no/#!?project=norgeskart&layers=1002&zoom=13&lat=${t.summit[1]}&lon=${t.summit[0]}&markerLat=${t.summit[1]}&markerLon=${t.summit[0]}">Norgeskart</a><a target="_blank" rel="noreferrer" href="https://www.google.com/maps/dir/?api=1&origin=${data.origin[1]},${data.origin[0]}&destination=${a.start[1]},${a.start[0]}">Drive</a><a target="_blank" rel="noreferrer" href="https://www.google.com/maps/@?api=1&map_action=map&basemap=satellite&center=${t.summit[1]},${t.summit[0]}&zoom=14">Satellite</a></div>`;}
+ draw();
+}
+function pick(i){active=i;render();const t=rows[i];if(t){const b=new maplibregl.LngLatBounds();for(const p of t.ascent.line)b.extend(p);if(t.descent)for(const p of t.descent.line)b.extend(p);map.fitBounds(b,{padding:{top:60,bottom:innerWidth<=800?innerHeight*0.5+20:60,left:40,right:40},maxZoom:14,duration:800});if(innerWidth<=800)$('panel').className='panel';$('detail').scrollIntoView({block:'nearest'});}}
+$('list').addEventListener('click',e=>{const b=e.target.closest('.card');if(b)pick(Number(b.dataset.i));});
+for(const id of ['f-slope','f-hours','f-run','f-drive','f-sort'])$(id).addEventListener('input',()=>{active=null;render();});
+$('f-nve').addEventListener('change',e=>map.setLayoutProperty('nve','visibility',e.target.checked?'visible':'none'));
+$('handle').addEventListener('click',()=>{const p=$('panel');p.className=p.classList.contains('peek')?'panel':p.classList.contains('full')?'panel peek':'panel full';});
+async function load(file){data=await (await fetch(file)).json();active=null;$('meta').textContent=`${data.tours.length} summits within ${data.max_drive} min of ${data.origin_name||'the origin'} · scanned ${data.generated}`;$('f-drive').value=data.max_drive;render();if(data.tours.length){const b=new maplibregl.LngLatBounds();for(const t of data.tours)b.extend(t.summit);map.fitBounds(b,{padding:40,duration:0});}}
+fetch('data/index.json').then(r=>r.json()).then(list=>{sets=list;$('f-set').innerHTML=list.map((s,i)=>`<option value="${s.file}" ${i===0?'selected':''}>${s.title}</option>`).join('');$('f-set').addEventListener('change',e=>load('data/'+e.target.value));map.on('load',()=>load('data/'+list[0].file));}).catch(()=>{$('meta').textContent='No datasets found in data/. Run scripts/build_site.py.';});
+</script>
+</body>
+</html>

@@ -34,6 +34,15 @@ npm test                               # frontend: GPX round trip, plan/preferen
 npx playwright test                    # end-to-end (desktop + iPhone viewport); needs both servers running and internet
 ```
 
+## Static site (GitHub Pages)
+
+`docs/` is a static site published by `.github/workflows/pages.yml`: a tour viewer (`index.html`,
+MapLibre + Kartverket + NVE tiles reading `docs/data/*.json`), per-tour GPX under `docs/gpx/`, and
+the review pages. Rebuild after a new scan with `.venv/bin/python scripts/build_site.py` and commit.
+
+Scan pipeline: `scripts/scan_region.py` (faces) → `review.py` → `review_page.py`;
+`scripts/toppturs_scan.py LON LAT MAX_MIN` (summit tours) → `toppturs_page.py`, `toppturs_gpx.py`.
+
 ## Data sources
 
 | Purpose | Service |
