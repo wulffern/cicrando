@@ -16,10 +16,16 @@ def _run(args):
         return block, None, time.time() - t0, f'{type(exc).__name__}: {exc}'
 
 
-def run_blocks(blocks, worker, out_dir: Path, workers=4, describe=lambda r: '', **kwargs):
-    """Call worker(block, **kwargs) for every block without a cached result; returns list of result paths."""
+def run_blocks(blocks, worker, out_dir: Path, workers=4, describe=lambda r: '', cached_only=False, **kwargs):
+    """Call worker(block, **kwargs) for every block without a cached result; returns list of result paths.
+
+    With cached_only=True nothing is computed: missing blocks are just reported.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     todo = [b for b in blocks if not (out_dir / f"{b['x']}_{b['y']}.json").exists()]
+    if cached_only:
+        print(f'{len(blocks)} blocks, {len(blocks) - len(todo)} cached, {len(todo)} not scanned (cached-only mode)', flush=True)
+        return sorted(out_dir.glob('*.json'))
     print(f'{len(blocks)} blocks, {len(todo)} to compute with {workers} workers', flush=True)
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_run, (worker, b, kwargs)) for b in todo]

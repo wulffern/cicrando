@@ -25,8 +25,28 @@ PLOWED = {'motorway', 'trunk', 'primary', 'secondary', 'tertiary'}
 NVDB = 'https://nvdbapiles.atlas.vegvesen.no/vegobjekter'
 
 
+ACCESS_CHUNK = 13000   # metres; road-with-geometry queries beyond this size time out on public Overpass
+
+
 def osm_access(west, south, east, north):
-    """Parking spots and winter-tagged roads for a UTM bbox; cached; None when Overpass is down."""
+    """Parking spots and winter-tagged roads for a UTM bbox, fetched in cached chunks.
+
+    Returns {'elements': [...]} or None only when no chunk could be fetched or recovered from cache.
+    """
+    elements, seen, got_any = [], set(), False
+    for cy in range(south, north, ACCESS_CHUNK):
+        for cx in range(west, east, ACCESS_CHUNK):
+            chunk = osm_access_chunk(cx, cy, min(cx + ACCESS_CHUNK, east), min(cy + ACCESS_CHUNK, north))
+            if chunk is None:
+                continue
+            got_any = True
+            for e in chunk.get('elements', []):
+                if (e['type'], e['id']) not in seen:
+                    seen.add((e['type'], e['id'])); elements.append(e)
+    return {'elements': elements} if got_any else None
+
+
+def osm_access_chunk(west, south, east, north):
     lon0, lat0 = TO_LL.transform(west, south); lon1, lat1 = TO_LL.transform(east, north)
     path = CACHE / f'access_{west}_{south}_{east}_{north}_v1.json'
     if path.exists():
@@ -35,7 +55,7 @@ def osm_access(west, south, east, north):
     query = (f'[out:json][timeout:120];(node["amenity"="parking"]{bb};way["amenity"="parking"]{bb};'
              f'way["highway"]["winter_service"="no"]{bb};way["highway"]["seasonal"]{bb};way["highway"]["snowplowing"="no"]{bb};'
              f'way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|track)$"]{bb};);out center tags geom;')
-    data = overpass(query, 200)
+    data = overpass(query, 150)
     if data is None:
         # Fall back to the union of earlier access responses clipped to this bbox.
         elements, seen = [], set()
@@ -46,7 +66,7 @@ def osm_access(west, south, east, north):
                     seen.add((e['type'], e['id'])); elements.append(e)
         if not elements:
             return None
-        logger.warning('Using cached access data for this bbox (%d elements)', len(elements))
+        logger.warning('Using cached access data for chunk %d,%d (%d elements)', west, south, len(elements))
         return {'elements': elements}
     CACHE.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data))

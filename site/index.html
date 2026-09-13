@@ -77,6 +77,7 @@ select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--
     <label>Sort<select id="f-sort"><option value="run">Run length</option><option value="total">Total time</option><option value="drive">Drive</option><option value="elev">Elevation</option><option value="name">Name</option></select></label>
     <label>Access<select id="f-access"><option value="open">Not closed</option><option value="plowed">Plowed only</option><option value="all">All</option></select></label>
     <label>Parking ≤ km<input id="f-park" type="number" value="12" step="1" min="1"></label>
+    <label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0"><input id="f-cov" type="checkbox" checked style="width:auto">Scanned blocks</label>
    </div>
    <p class="hint" id="count" style="margin-top:6px"></p>
    <ol class="cands" id="summits"></ol>
@@ -106,8 +107,9 @@ let G=null,node={},skinTo={},walkFrom={},runsOf={},loops={},sel=null; // sel: {s
 const map=new maplibregl.Map({container:'map',center:[9.55,62.69],zoom:10,minZoom:6,maxZoom:17,attributionControl:{compact:true},style:{version:8,sources:{
  topo:{type:'raster',tiles:['https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'],tileSize:256,attribution:'© <a href="https://kartverket.no">Kartverket</a>'},
  nve:{type:'raster',tiles:['https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_med_utlop_2024/MapServer/tile/{z}/{y}/{x}'],tileSize:256,minzoom:5,maxzoom:16,attribution:'© <a href="https://varsom.no">NVE</a>'},
- nodes:{type:'geojson',data:{type:'FeatureCollection',features:[]}},route:{type:'geojson',data:{type:'FeatureCollection',features:[]}}},
+ coverage:{type:'geojson',data:{type:'FeatureCollection',features:[]}},nodes:{type:'geojson',data:{type:'FeatureCollection',features:[]}},route:{type:'geojson',data:{type:'FeatureCollection',features:[]}}},
  layers:[{id:'topo',type:'raster',source:'topo',paint:{'raster-saturation':-0.5}},{id:'nve',type:'raster',source:'nve',paint:{'raster-opacity':0.35}},
+ {id:'coverage',type:'line',source:'coverage',paint:{'line-color':'#173d35','line-width':1,'line-dasharray':[3,3],'line-opacity':0.6}},
  {id:'route-halo',type:'line',source:'route',paint:{'line-color':'#fff','line-width':8}},
  {id:'route',type:'line',source:'route',paint:{'line-color':['match',['get','kind'],'skin','#2b6cb0','run','#d9480f','#6b7f7a'],'line-width':4}},
  {id:'parkings',type:'circle',source:'nodes',filter:['==',['get','type'],'p'],paint:{'circle-radius':['case',['get','on'],8,4],'circle-color':['match',['get','access'],'plowed','#2f8f5b','closed','#b74d41','#b7791f'],'circle-stroke-color':'#fff','circle-stroke-width':1.5,'circle-opacity':['case',['get','on'],1,0.6]}},
@@ -174,7 +176,16 @@ $('gpx').addEventListener('click',()=>{if(!sel)return;const cur=loops[sel.s].fin
  const gpx=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rando topptur planner" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${esc(name)}</name><desc>This is an automatically generated list. I have not checked them all. Do not attempt these if you're a beginner. Legs are least-cost terrain lines, not checked routes.</desc></metadata>${wpt(cur.p.lonlat,'Car · '+(cur.p.name||'Parking'))}${wpt(s.lonlat,name)}${trk('1 Skin up',`${dur(cur.up.hours)}, +${cur.up.gain_m} m, max ${cur.up.max_slope.toFixed(0)}°`,cur.up.line)}${trk('2 Ski',`${cur.r.band_length_m} m of 20–30°, ${Math.round(cur.r.drop)} m drop, max ${cur.r.max_slope.toFixed(0)}°`,cur.down.line)}${trk('3 Back to car',`${dur(cur.back.hours)}, +${cur.back.gain_m} m, max ${cur.back.max_slope.toFixed(0)}°`,cur.back.line)}</gpx>`;
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'}));a.download=`${(s.name||'summit').replace(/[^\w]+/g,'-')}-${Math.round(s.elevation)}m.gpx`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
 $('handle').addEventListener('click',()=>{const p=$('panel');p.className=p.classList.contains('peek')?'panel':p.classList.contains('full')?'panel peek':'panel full';});
-async function load(file){G=await (await fetch(file)).json();index();compute();sel=null;$('meta').textContent=`${G.summits.length} summits · ${G.parkings.length} parkings · ${G.runs.length} runs · ${G.origin_name} ${G.generated.slice(0,10)}`;$('f-drive').value=Math.round((G.max_drive_hours||1)*60);list();
+function drawCoverage(){const ids=G.scanned_blocks||[];const feats=ids.map(id=>{const [x,y]=id.split('_').map(Number);const ring=[[x,y],[x+28000,y],[x+28000,y+28000],[x,y+28000],[x,y]].map(([X,Y])=>utmToLonLat(X,Y));return {type:'Feature',properties:{id},geometry:{type:'Polygon',coordinates:[ring]}};});map.getSource('coverage').setData({type:'FeatureCollection',features:feats});$('meta').title=`${ids.length} scanned blocks`;}
+function utmToLonLat(x,y){ // EPSG:25833 → WGS84 (Karney series, good to ~1 mm)
+ const a=6378137,f=1/298.257223563,k0=0.9996,lon0=15*Math.PI/180;const n=f/(2-f),A=a/(1+n)*(1+n*n/4+n*n*n*n/64);
+ const xi=(y)/(k0*A),eta=(x-500000)/(k0*A);const b1=n/2-2*n*n/3+37*n*n*n/96,b2=n*n/48+n*n*n/15,b3=17*n*n*n/480;
+ const d1=2*n-2*n*n/3-2*n*n*n,d2=7*n*n/3-8*n*n*n/5,d3=56*n*n*n/15;
+ let xp=xi,ep=eta;for(const [j,bj] of [[1,b1],[2,b2],[3,b3]]){xp-=bj*Math.sin(2*j*xi)*Math.cosh(2*j*eta);ep-=bj*Math.cos(2*j*xi)*Math.sinh(2*j*eta);}
+ const chi=Math.asin(Math.sin(xp)/Math.cosh(ep));const lat=chi+d1*Math.sin(2*chi)+d2*Math.sin(4*chi)+d3*Math.sin(6*chi);const lon=lon0+Math.atan2(Math.sinh(ep),Math.cos(xp));
+ return [lon*180/Math.PI,lat*180/Math.PI];}
+$('f-cov').addEventListener('change',e=>map.setLayoutProperty('coverage','visibility',e.target.checked?'visible':'none'));
+async function load(file){G=await (await fetch(file)).json();index();compute();sel=null;drawCoverage();$('meta').textContent=`${G.summits.length} summits · ${G.parkings.length} parkings · ${G.runs.length} runs · ${G.origin_name} ${G.generated.slice(0,10)}`;$('f-drive').value=Math.round((G.max_drive_hours||1)*60);list();
  const ids=location.hash.slice(1).split(',');if(ids[0]&&loops[ids[0]])pick(ids[0],ids[1],ids[2]);else{const b=new maplibregl.LngLatBounds();for(const s of G.summits)b.extend(s.lonlat);map.fitBounds(b,{padding:40,duration:0});}}
 fetch('data/index.json').then(r=>r.json()).then(idx=>{const list=idx.graphs||[];if(!list.length)throw 0;$('f-set').innerHTML=list.map(s=>`<option value="${s.file}">${s.title}</option>`).join('');$('f-set').addEventListener('change',e=>load('data/'+e.target.value));map.on('load',()=>load('data/'+list[0].file));}).catch(()=>{$('meta').textContent='No route graph published yet. Run scripts/graph_scan.py and build_site.py.';});
 </script>

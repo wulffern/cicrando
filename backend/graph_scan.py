@@ -163,17 +163,17 @@ def enrich_names(summits, cache_root):
         path.write_text(json.dumps(cache, ensure_ascii=False))
 
 
-def execute_scan(plan, name, cache_root='.cache', workers=2):
+def execute_scan(plan, name, cache_root='.cache', workers=2, cached_only=False):
     out = cache_directory(cache_root, plan['routing'])
     paths = run_blocks(plan['terrain_blocks'], build_block, out, workers=workers, routing=plan['routing'],
-                       describe=lambda g: f"{len(g['edges'])} edges")
+                       describe=lambda g: f"{len(g['edges'])} edges", cached_only=cached_only)
     # Limit reads even if a caller/block runner returns unrelated cache entries.
     expected = {out / f"{b['x']}_{b['y']}.json" for b in plan['terrain_blocks']}
     paths = sorted(Path(p) for p in paths if Path(p) in expected)
     graph = assemble(paths, plan['eligible_parkings'])
     enrich_names(graph['summits'], cache_root)
     graph.update(origin=plan['origin'], origin_name=name, generated=time.strftime('%Y-%m-%d %H:%M'),
-                 blocks=len(paths), requested_blocks=len(expected), coverage=plan['coverage'],
+                 blocks=len(paths), requested_blocks=len(expected), scanned_blocks=[p.stem for p in paths], coverage=plan['coverage'],
                  max_drive_hours=plan['max_drive_hours'], access=plan['access'], routing=plan['routing'],
                  terrain_buffer_km=plan.get('terrain_buffer_km', plan['routing']['reach_km']),
                  missing_terrain_blocks=[p.stem for p in sorted(expected - set(paths))],
