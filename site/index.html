@@ -103,7 +103,14 @@ const $=id=>document.getElementById(id);
 const compass=d=>d==null?'?':['N','NE','E','SE','S','SW','W','NW'][Math.round(d/45)%8];
 const dur=h=>h==null?'?':`${Math.floor(h)}h ${String(Math.round((h%1)*60)).padStart(2,'0')}`;
 const sector=a=>a==null?null:(a>=315||a<45)?'N':a<135?'E':a<225?'S':'W';
-let G=null,node={},skinTo={},walkFrom={},runsOf={},loops={},sel=null; // sel: {s, p, r}
+let G=null,node={},skinTo={},walkFrom={},runsOf={},loops={},sel=null,LINES={},gfile=''; // sel: {s, p, r}
+const blockOf=id=>id.split('_').length>=3?id.split('_').slice(0,2).join('_'):'x';
+async function lines(ids){ // fetch per-block geometry files on demand
+ const need=[...new Set(ids.map(blockOf))].filter(b=>!LINES[b]);
+ await Promise.all(need.map(async b=>{try{LINES[b]=await (await fetch(`data/${G.lines_dir}/${b}.json`)).json();}catch{LINES[b]={};}}));
+}
+const edgeLine=e=>(LINES[blockOf(e.kind==='skin'?e.to:e.from)]||{})[`${e.from}>${e.to}>${e.kind}`]||[];
+const runLine=r=>(LINES[blockOf(r.id)]||{})[r.id]||[];
 const map=new maplibregl.Map({container:'map',center:[9.55,62.69],zoom:10,minZoom:6,maxZoom:17,attributionControl:{compact:true},style:{version:8,sources:{
  topo:{type:'raster',tiles:['https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'],tileSize:256,attribution:'© <a href="https://kartverket.no">Kartverket</a>'},
  nve:{type:'raster',tiles:['https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_med_utlop_2024/MapServer/tile/{z}/{y}/{x}'],tileSize:256,minzoom:5,maxzoom:16,attribution:'© <a href="https://varsom.no">NVE</a>'},
@@ -126,7 +133,7 @@ function loopsFor(sid){ // all (parking, run, up, back) combos, best first
  const out=[];const drive=+$('f-drive').value,slope=+$('f-slope').value,minRun=+$('f-run').value,maxKm=+$('f-park').value*1000,face=$('f-face').value;
  for(const up of skinTo[sid]||[]){const p=node[up.from];if(!accessOk(p)||(p.drive_min??999)>drive||up.max_slope>slope||up.length_m>maxKm*1.6)continue;
   for(const r of runsOf[sid]||[]){if(r.band_length_m<minRun||(face!=='all'&&sector(r.aspect)!==face))continue;const back=(walkFrom[r.id]||[]).find(e=>e.to===p.id);if(!back||back.max_slope>slope)continue;
-   const s=node[sid];const down={hours:r.band_length_m/8000+r.start_offset_m/4000,line:[s.lonlat,...r.line]};
+   const s=node[sid];const down={hours:r.band_length_m/8000+r.start_offset_m/4000};
    out.push({p,r,up,back,down,total:up.hours+down.hours+back.hours,score:r.band_length_m-0.3*back.length_m-3*back.gain_m-40*up.hours});}}
  return out.sort((a,b)=>b.score-a.score);
 }
@@ -140,9 +147,10 @@ function list(){
  drawNodes();
 }
 function drawNodes(){map.getSource('nodes').setData({type:'FeatureCollection',features:[...G.summits.map(s=>({type:'Feature',properties:{id:s.id,type:'s',ok:!!loops[s.id],on:sel?.s===s.id},geometry:{type:'Point',coordinates:s.lonlat}})),...(sel?[{type:'Feature',properties:{id:sel.p,type:'p',access:node[sel.p].access,on:true},geometry:{type:'Point',coordinates:node[sel.p].lonlat}}]:[])]});}
-function pick(sid,pid,rid){
+async function pick(sid,pid,rid){
  const L=loops[sid];if(!L)return;let cur=L.find(l=>(!pid||l.p.id===pid)&&(!rid||l.r.id===rid))||L[0];
- sel={s:sid,p:cur.p.id,r:cur.r.id};show(cur);
+ sel={s:sid,p:cur.p.id,r:cur.r.id};await lines([sid,cur.r.id]);
+ cur.up.line=edgeLine(cur.up);cur.back.line=edgeLine(cur.back);cur.down.line=[node[sid].lonlat,...runLine(cur.r)];show(cur);
 }
 function show(cur){
  const s=node[sel.s];const L=loops[sel.s];
@@ -185,7 +193,7 @@ function utmToLonLat(x,y){ // EPSG:25833 → WGS84 (Karney series, good to ~1 mm
  const chi=Math.asin(Math.sin(xp)/Math.cosh(ep));const lat=chi+d1*Math.sin(2*chi)+d2*Math.sin(4*chi)+d3*Math.sin(6*chi);const lon=lon0+Math.atan2(Math.sinh(ep),Math.cos(xp));
  return [lon*180/Math.PI,lat*180/Math.PI];}
 $('f-cov').addEventListener('change',e=>map.setLayoutProperty('coverage','visibility',e.target.checked?'visible':'none'));
-async function load(file){G=await (await fetch(file)).json();index();compute();sel=null;drawCoverage();$('meta').textContent=`${G.summits.length} summits · ${G.parkings.length} parkings · ${G.runs.length} runs · ${G.origin_name} ${G.generated.slice(0,10)}`;$('f-drive').value=Math.round((G.max_drive_hours||1)*60);list();
+async function load(file){G=await (await fetch(file)).json();LINES={};gfile=file;index();$('f-drive').value=Math.round((G.max_drive_hours||1)*60);compute();sel=null;drawCoverage();$('meta').textContent=`${G.summits.length} summits · ${G.parkings.length} parkings · ${G.runs.length} runs · ${G.origin_name} ${G.generated.slice(0,10)}`;list();
  const ids=location.hash.slice(1).split(',');if(ids[0]&&loops[ids[0]])pick(ids[0],ids[1],ids[2]);else{const b=new maplibregl.LngLatBounds();for(const s of G.summits)b.extend(s.lonlat);map.fitBounds(b,{padding:40,duration:0});}}
 fetch('data/index.json').then(r=>r.json()).then(idx=>{const list=idx.graphs||[];if(!list.length)throw 0;$('f-set').innerHTML=list.map(s=>`<option value="${s.file}">${s.title}</option>`).join('');$('f-set').addEventListener('change',e=>load('data/'+e.target.value));map.on('load',()=>load('data/'+list[0].file));}).catch(()=>{$('meta').textContent='No route graph published yet. Run scripts/graph_scan.py and build_site.py.';});
 </script>
