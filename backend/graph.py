@@ -49,8 +49,7 @@ class Router:
         for i, t in ids:
             if not np.isfinite(dist[t]):
                 continue
-            path = mesh.path_cells(pred, self.crow, self.ccol, self.size, t)
-            path[0] = (sr, sc); path[-1] = dict(targets)[i]
+            path = mesh.path_cells(pred, self.crow, self.ccol, self.size, t, (sr, sc), tuple(dict(targets)[i]))
             stats = path_stats(path[:, 0], path[:, 1], z, slope, forest, horizontal, vertical)
             stats['line'] = line(path, W, north, 8)
             out.append((i, stats))

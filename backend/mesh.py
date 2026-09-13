@@ -102,19 +102,20 @@ def dijkstra(indptr, dst, w, source, targets):
 
 
 @njit(cache=True)
-def _walk(chain, crow, ccol, size):
+def _walk(chain, crow, ccol, size, sr, sc, tr, tc):
     """Cells visited along centre → exit → entry → centre segments, densified at one cell per step."""
     out = np.empty((len(chain) * 64 + 8, 2), dtype=np.int64)
     n = 0
-    pr, pc = crow[chain[0]], ccol[chain[0]]
-    out[0, 0] = int(round(pr)); out[0, 1] = int(round(pc)); n = 1
+    pr, pc = float(sr), float(sc)                       # start at the real source cell, not the leaf centre
+    out[0, 0] = sr; out[0, 1] = sc; n = 1
     for k in range(len(chain) - 1):
         a, b = chain[k], chain[k + 1]
         ha, hb = (size[a] - 1) / 2.0, (size[b] - 1) / 2.0
         # entry: cell of b nearest a's centre; exit: cell of a nearest that entry cell
         er = min(max(crow[a], crow[b] - hb), crow[b] + hb); ec = min(max(ccol[a], ccol[b] - hb), ccol[b] + hb)
         xr = min(max(er, crow[a] - ha), crow[a] + ha); xc = min(max(ec, ccol[a] - ha), ccol[a] + ha)
-        for (qr, qc) in ((xr, xc), (er, ec), (crow[b], ccol[b])):
+        last = (k == len(chain) - 2)
+        for (qr, qc) in ((xr, xc), (er, ec), (float(tr), float(tc)) if last else (crow[b], ccol[b])):
             steps = int(np.ceil(max(abs(qr - pr), abs(qc - pc))))
             for t in range(1, max(steps, 1) + 1):
                 rr = pr + (qr - pr) * t / max(steps, 1); cc = pc + (qc - pc) * t / max(steps, 1)
@@ -127,7 +128,7 @@ def _walk(chain, crow, ccol, size):
     return out[:n]
 
 
-def path_cells(pred, crow, ccol, size, target):
+def path_cells(pred, crow, ccol, size, target, start_cell=None, end_cell=None):
     """Predecessor chain → 10 m cell path that never leaves the leaves it visits.
 
     Between two touching leaves the path goes centre → exit cell of the first leaf → entry cell of
@@ -139,4 +140,8 @@ def path_cells(pred, crow, ccol, size, target):
     while v >= 0:
         chain.append(v); v = pred[v]
     chain.reverse()
-    return _walk(np.array(chain, dtype=np.int64), crow, ccol, size)
+    sr, sc = start_cell if start_cell is not None else (int(round(crow[chain[0]])), int(round(ccol[chain[0]])))
+    tr, tc = end_cell if end_cell is not None else (int(round(crow[chain[-1]])), int(round(ccol[chain[-1]])))
+    if len(chain) == 1:
+        return _walk(np.array(chain * 2, dtype=np.int64), crow, ccol, size, sr, sc, tr, tc)
+    return _walk(np.array(chain, dtype=np.int64), crow, ccol, size, sr, sc, tr, tc)

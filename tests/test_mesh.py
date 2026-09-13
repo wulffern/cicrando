@@ -30,10 +30,14 @@ def test_dijkstra_matches_fine_grid_cost_and_avoids_impassable():
     indptr, dst, w = mesh.build_graph(leaf, crow, ccol, lcost)
     src, tgt = (80, 5), (80, 155)                          # straight across the steep band
     d, pred = mesh.dijkstra(indptr, dst, w, int(leaf[src]), np.array([int(leaf[tgt])], dtype=np.int32))
-    path = mesh.path_cells(pred, crow, ccol, size, int(leaf[tgt]))
+    path = mesh.path_cells(pred, crow, ccol, size, int(leaf[tgt]), src, tgt)
     assert tuple(path[0]) == src and tuple(path[-1]) == tgt
     assert (slope[path[:, 0], path[:, 1]] < 35).all()        # never through the 40° core
     assert np.all(np.abs(np.diff(path, axis=0)).max(axis=1) == 1)   # 8-connected steps
+    # Cost of the walked path on the 10 m grid (same metric as MCP_Geometric) vs the fine optimum.
+    steps = np.hypot(*np.diff(path, axis=0).T)
+    cell_cost = costs[path[:, 0], path[:, 1]]
+    walked = float(np.sum(steps * (cell_cost[:-1] + cell_cost[1:]) / 2))
     mcp = MCP_Geometric(costs, fully_connected=True)
     cum, _ = mcp.find_costs(starts=[src], ends=[tgt], find_all_ends=True)
-    assert abs(d[int(leaf[tgt])] / 10 / cum[tgt] - 1) < 0.03     # within 3 % of the 10 m optimum
+    assert abs(walked / cum[tgt] - 1) < 0.03     # within 3 % of the 10 m optimum
