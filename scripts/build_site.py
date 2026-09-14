@@ -8,6 +8,7 @@
 import json, re, shutil, subprocess, sys
 from pathlib import Path
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root))
 docs = root / 'docs'; (docs / 'data').mkdir(parents=True, exist_ok=True); (docs / 'gpx').mkdir(exist_ok=True)
 shutil.copy(root / 'site/index.html', docs / 'index.html')
 (docs / 'route.html').unlink(missing_ok=True)
