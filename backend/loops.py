@@ -17,7 +17,7 @@ from scipy import ndimage
 from skimage.graph import MCP_Geometric
 
 from .search import CACHE, build_mosaic, fall_line_drop, forest_mask, overpass, trace, TREE_NAMES
-from .terrain import TO_LL, TO_UTM, derivatives, finite
+from .terrain import TO_LL, TO_UTM, derivatives, finite, geo_bbox
 from .toppturs import ascent_costs, find_peaks, path_stats
 
 logger = logging.getLogger('rando.loops')
@@ -49,8 +49,8 @@ def osm_access(west, south, east, north):
 
 
 def osm_access_chunk(west, south, east, north):
-    lon0, lat0 = TO_LL.transform(west, south); lon1, lat1 = TO_LL.transform(east, north)
-    path = CACHE / f'access_{west}_{south}_{east}_{north}_v1.json'
+    lon0, lat0, lon1, lat1 = geo_bbox(west, south, east, north)
+    path = CACHE / f'access_{west}_{south}_{east}_{north}_v2.json'
     if path.exists():
         return json.loads(path.read_text())
     bb = f'({lat0:.4f},{lon0:.4f},{lat1:.4f},{lon1:.4f})'

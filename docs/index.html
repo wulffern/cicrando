@@ -154,14 +154,16 @@ function loopsFor(sid){ // (parking, run) combos, best first; back leg optional
    if(loopOnly&&!back)continue;
    const dist=km(r.bottom,p.lonlat);
    const down={hours:ap.hours+r.band_length_m/8000,ap};
-   out.push({p,r,up,back,down,ap,reskin,lake:(up.lake_m||0)+(ap.lake_m||0)+(back?back.lake_m||0:0),dist,total:up.hours+down.hours+(back?back.hours:0),score:r.band_length_m-(back?0.3*back.length_m+3*back.gain_m:600*dist)-300*up.hours-2*(r.over30_m||0)-3*reskin-0.5*((up.lake_m||0)+(ap.lake_m||0)+(back?back.lake_m||0:0))});}
+   const total=up.hours+down.hours+(back?back.hours:0);
+   // Rank: no skins back on first, then the shortest day (a missing walk back counts as 1 h per straight-line km), run length as tiebreak.
+   out.push({p,r,up,back,down,ap,reskin,lake:(up.lake_m||0)+(ap.lake_m||0)+(back?back.lake_m||0:0),dist,total,rank:[reskin>RESKIN_M?1:0,total+(back?0:dist),-r.band_length_m]});}
   // Fallback: ski the ascent line back down (always closes the loop); only when this parking has no real run.
   const realHere=out.some(o=>o.p===p&&!o.r.synthetic);
   if(!realHere){const share=up.share_band??null;if(share!==null&&up.length_m*share/100>=minRun&&face==='all'&&up.max_slope<=runMax){
    const r={id:'up:'+up.from+'>'+sid,band_length_m:Math.round(up.length_m*share/100),drop:up.gain_m,top_elevation:s.elevation,bottom_elevation:s.elevation-up.gain_m,mean_slope:null,max_slope:up.max_slope,steep_share:up.share_over_30,aspect:null,forest_share:up.forest_share,forest_type:null,start_offset_m:0,over30_m:Math.round(up.length_m*up.share_over_30/100),length_m:up.length_m,bottom:p.lonlat,synthetic:true};
-   out.push({p,r,up,back:null,down:{hours:up.length_m/8000,ap:null},ap:null,reskin:0,lake:up.lake_m||0,dist:0,total:up.hours+up.length_m/8000,score:Math.min(r.band_length_m,400)*0.5-300*up.hours-1000});}}
+   out.push({p,r,up,back:null,down:{hours:up.length_m/8000,ap:null},ap:null,reskin:0,lake:up.lake_m||0,dist:0,total:up.hours+up.length_m/8000,rank:[2,up.hours+up.length_m/8000,-r.band_length_m]});}}
  }
- return out.sort((a,b)=>b.score-a.score);
+ return out.sort((a,b)=>a.rank[0]-b.rank[0]||a.rank[1]-b.rank[1]||a.rank[2]-b.rank[2]);
 }
 function km(a,b){const R=6371,dLat=(b[1]-a[1])*Math.PI/180,dLon=(b[0]-a[0])*Math.PI/180,x=Math.sin(dLat/2)**2+Math.cos(a[1]*Math.PI/180)*Math.cos(b[1]*Math.PI/180)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
 function compute(){loops={};for(const s of G.summits){const l=loopsFor(s.id);if(l.length)loops[s.id]=l;}}

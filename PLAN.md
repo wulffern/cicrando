@@ -67,6 +67,13 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    the planner charges 300 pts/h of skinning, defaults "Parking ≤ km" to 6, and hides legs
    crossing >200 m of lake unless "Avoid lake crossings" is unchecked (no leg crosses sea — the
    AR5 mask makes sea impassable; the "oceans" were Selbusjøen-sized lakes at 2x cost).
+
+   Missing trailheads (2026-09-14, Skaret/Tjønnpiken): Overpass chunk bboxes were built from the
+   SW and NE UTM corners only; the UTM grid is rotated against lat/lon here, so a ~1 km wedge
+   along two sides of every 13 km chunk was never queried, and a parking could exist in one
+   block's padded window yet be missing from the block that routes to its nearest summits.
+   `terrain.geo_bbox` now encloses all four corners (access cache bumped to v2; `roads()` too).
+   Per-summit option order is now: no skins back on first, then shortest day, run length last.
 1. Choose date and outing window; scrub a map time slider.
 2. Set editable minimum/maximum slope and aspect. South and north presets each span ±45° by default.
 3. Choose seek sunlight, seek shade, or aspect-only terrain matching. Display potential direct sunlight separately from forecast cloud cover.

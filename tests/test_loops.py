@@ -33,3 +33,16 @@ def test_town_car_parks_are_not_trailheads(monkeypatch):
     monkeypatch.setattr(loops, 'nvdb_unplowed', lambda *a, **k: loops.np.zeros((0, 2)))
     spots = loops.parking_spots(190000, 6960000, 194000, 6964000, pad=0)
     assert [s['name'] for s in spots] == ['Trailhead']
+
+
+def test_access_chunk_bbox_covers_rotated_utm_rectangle(monkeypatch, tmp_path):
+    # Skaret parking (9.55151, 62.67671) is 216 m inside the UTM chunk's west edge but west of
+    # the SW corner's longitude; the query bbox must enclose all four corners.
+    from backend.terrain import geo_bbox
+    lon0, lat0, lon1, lat1 = geo_bbox(221000, 6957000, 234000, 6970000)
+    assert lon0 <= 9.55151 <= lon1 and lat0 <= 62.67671 <= lat1
+    seen = {}
+    monkeypatch.setattr(loops, 'CACHE', tmp_path)
+    monkeypatch.setattr(loops, 'overpass', lambda q, t: seen.setdefault('q', q) and {'elements': []})
+    loops.osm_access_chunk(221000, 6957000, 234000, 6970000)
+    assert f'({lat0:.4f},{lon0:.4f},{lat1:.4f},{lon1:.4f})' in seen['q']

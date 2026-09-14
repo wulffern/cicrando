@@ -27,6 +27,16 @@ CACHE = Path(os.getenv('RANDO_CACHE', '.cache/terrain'))
 SOURCE = 'https://hoydedata.no/arcgis/rest/services/NHM_DTM_25833/ImageServer'
 TO_UTM = Transformer.from_crs(4326, 25833, always_xy=True)
 TO_LL = Transformer.from_crs(25833, 4326, always_xy=True)
+
+
+def geo_bbox(west, south, east, north):
+    """(lon0, lat0, lon1, lat1) enclosing a UTM rectangle.
+
+    The UTM grid is rotated against lat/lon away from the central meridian, so the SW and NE
+    corners alone cut a wedge (~1 km per 13 km here) off two sides of the rectangle.
+    """
+    lon, lat = TO_LL.transform([west, east, east, west], [south, south, north, north])
+    return min(lon), min(lat), max(lon), max(lat)
 OSLO = ZoneInfo('Europe/Oslo')
 LOCK = RLock()
 

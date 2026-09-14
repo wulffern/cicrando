@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from .terrain import CACHE, TO_LL, TO_UTM, derivatives, fetch_raster, finite, local_time, solar
+from .terrain import CACHE, TO_LL, TO_UTM, derivatives, fetch_raster, finite, geo_bbox, local_time, solar
 
 logger = logging.getLogger('rando.search')
 OVERPASS = 'https://overpass-api.de/api/interpreter'
@@ -173,8 +173,7 @@ def cached_roads(lon0, lat0, lon1, lat1):
 
 def roads(west, south, east, north):
     """OSM driveable roads inside a padded UTM bbox as UTM points; None when unavailable."""
-    lon0, lat0 = TO_LL.transform(west - 3000, south - 3000)
-    lon1, lat1 = TO_LL.transform(east + 3000, north + 3000)
+    lon0, lat0, lon1, lat1 = geo_bbox(west - 3000, south - 3000, east + 3000, north + 3000)
     key = hashlib.sha256(f'roads:{lat0:.3f}:{lon0:.3f}:{lat1:.3f}:{lon1:.3f}:v1'.encode()).hexdigest()[:24]
     path = CACHE / f'{key}.json'
     if path.exists():
