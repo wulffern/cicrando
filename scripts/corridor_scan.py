@@ -1,5 +1,5 @@
-"""Tour graph along driving corridors from Trondheim. Usage: corridor_scan.py NAME [max_drive_hours] [buffer_km]"""
-import json, sys, time
+"""Tour graph along driving corridors from Trondheim. Usage: corridor_scan.py NAME [max_drive_hours] [buffer_km] [workers]"""
+import json, re, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.graph_scan import plan_scan, execute_scan
@@ -15,12 +15,14 @@ if __name__ == '__main__':
     name = sys.argv[1] if len(sys.argv) > 1 else 'Trondheim'
     max_drive = float(sys.argv[2]) if len(sys.argv) > 2 else 3.0
     buffer_km = float(sys.argv[3]) if len(sys.argv) > 3 else 15
+    workers = int(sys.argv[4]) if len(sys.argv) > 4 else 2
     region = Corridor(TRONDHEIM, LEGS, buffer_km, name)
     print(f'{len(region._xy)} route points, {len(region.blocks())} coverage blocks', flush=True)
     plan = plan_scan(region, max_drive_hours=max_drive, access='open')
     print(f"{plan['parking_count']} parkings in corridor, {len(plan['eligible_parkings'])} eligible (≤{max_drive} h), {len(plan['terrain_blocks'])} terrain blocks", flush=True)
-    graph = execute_scan(plan, name, workers=2)
-    out = Path(f'data/graph-{name.lower()}-{time.strftime("%Y-%m-%d")}.json')
+    graph = execute_scan(plan, name, workers=workers)
+    slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+    out = Path(f'data/graph-{slug}-{time.strftime("%Y-%m-%d")}.json')
     from backend.store import save
     save(graph, out)
     print('wrote', out, {k: len(graph[k]) for k in ('parkings', 'summits', 'runs', 'edges')}, 'complete:', graph['complete'], flush=True)

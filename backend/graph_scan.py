@@ -29,7 +29,7 @@ def parking_key(lon, lat):
 
 def cache_directory(root, routing):
     overrides = Path('data/winter_roads.json')
-    identity = dict(algorithm='adaptive-portals-v5-water', terrain='Kartverket-DTM-10m', routing=routing,
+    identity = dict(algorithm='adaptive-portals-v6-runout-elev-trailheads', terrain='Kartverket-DTM-10m', routing=routing,
                     winter_overrides=overrides.read_text() if overrides.exists() else '')
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
     return Path(root) / 'graph-v3' / digest
