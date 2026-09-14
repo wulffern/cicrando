@@ -29,21 +29,23 @@ for src in sorted((root / 'data').glob('*toppturer*.json'), reverse=True):
     (docs / 'data' / src.name).write_text(json.dumps(data, ensure_ascii=False))
     index.append(dict(file=src.name, title=f"{data.get('origin_name') or 'Origin'} · {data['generated'][:10]} · {len(data['tours'])} tours"))
 graphs = []
-def block_of(node_id):
-    return node_id.rsplit('_', 1)[0] if node_id.count('_') >= 2 else 'x'
+from backend.store import block_of
 for src in sorted((root / 'data').glob('graph-*.json'), reverse=True):
     g = json.loads(src.read_text())
-    # Geometry goes to per-block files fetched on demand; the main file stays small.
-    lines = {}
-    for e in g['edges']:
-        blk = block_of(e['to'] if e['kind'] == 'skin' else e['from'])
-        lines.setdefault(blk, {})[f"{e['from']}>{e['to']}>{e['kind']}"] = e.pop('line', None)
-    for r in g['runs']:
-        lines.setdefault(block_of(r['id']), {})[r['id']] = r.pop('line', None)
+    ldir_src = src.with_suffix('.lines')
     ldir = docs / 'data' / 'lines' / src.stem
-    shutil.rmtree(ldir, ignore_errors=True); ldir.mkdir(parents=True)
-    for blk, d in lines.items():
-        (ldir / f'{blk}.json').write_text(json.dumps(d))
+    shutil.rmtree(ldir, ignore_errors=True)
+    if g.get('lines_dir') and ldir_src.exists():
+        shutil.copytree(ldir_src, ldir)
+    else:  # legacy inline geometry: split it here
+        lines = {}
+        for e in g['edges']:
+            lines.setdefault(block_of(e['to'] if e['kind'] == 'skin' else e['from']), {})[f"{e['from']}>{e['to']}>{e['kind']}"] = e.pop('line', None)
+        for r in g['runs']:
+            lines.setdefault(block_of(r['id']), {})[r['id']] = r.pop('line', None)
+        ldir.mkdir(parents=True)
+        for blk, d in lines.items():
+            (ldir / f'{blk}.json').write_text(json.dumps(d))
     g['lines_dir'] = f'lines/{src.stem}'
     (docs / 'data' / src.name).write_text(json.dumps(g, ensure_ascii=False))
     graphs.append(dict(file=src.name, title=f"{g.get('origin_name') or 'Origin'} · {g['generated'][:10]} · {len(g['summits'])} summits, {len(g['runs'])} runs"))

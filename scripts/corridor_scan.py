@@ -21,5 +21,6 @@ if __name__ == '__main__':
     print(f"{plan['parking_count']} parkings in corridor, {len(plan['eligible_parkings'])} eligible (≤{max_drive} h), {len(plan['terrain_blocks'])} terrain blocks", flush=True)
     graph = execute_scan(plan, name, workers=2)
     out = Path(f'data/graph-{name.lower()}-{time.strftime("%Y-%m-%d")}.json')
-    out.write_text(json.dumps(graph, ensure_ascii=False))
+    from backend.store import save
+    save(graph, out)
     print('wrote', out, {k: len(graph[k]) for k in ('parkings', 'summits', 'runs', 'edges')}, 'complete:', graph['complete'], flush=True)

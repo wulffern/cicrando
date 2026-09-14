@@ -32,5 +32,6 @@ want = [f"{b['x']}_{b['y']}" for b in plan['terrain_blocks']]
 print(f"{plan['parking_count']} parkings in coverage, {len(plan['eligible_parkings'])} eligible; terrain blocks wanted {len(want)}, scanned {sum(1 for w in want if w in have)}, missing {[w for w in want if w not in have]}")
 graph = execute_scan(plan, a.name, cached_only=True)
 out = Path(f'data/graph-{a.name.lower()}-{time.strftime("%Y-%m-%d")}.json')
-out.write_text(json.dumps(graph, ensure_ascii=False))
+from backend.store import save
+save(graph, out)
 print('wrote', out, {k: len(graph[k]) for k in ('parkings', 'summits', 'runs', 'edges')}, f'in {time.time()-t0:.0f} s; complete: {graph["complete"]}')
