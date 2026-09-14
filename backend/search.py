@@ -21,7 +21,7 @@ from .terrain import CACHE, TO_LL, TO_UTM, derivatives, fetch_raster, finite, ge
 
 logger = logging.getLogger('rando.search')
 OVERPASS = 'https://overpass-api.de/api/interpreter'
-OVERPASS_MIRRORS = ('https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter')
+OVERPASS_MIRRORS = ('https://overpass.kumi.systems/api/interpreter',)
 FOREST_CHUNK = 14000   # metres; larger forest queries time out on public Overpass
 ROAD_TYPES = 'motorway|trunk|primary|secondary|tertiary|unclassified|residential'
 MAX_SIDE = 30000        # metres; 30 km square = 56 tiles
@@ -135,7 +135,7 @@ def overpass(query, timeout):
     """Query the public Overpass API, falling back to a mirror; None when both fail."""
     if OFFLINE:
         return None
-    for url in (*OVERPASS_MIRRORS[::-1], OVERPASS):  # fastest mirror first; the primary has been rate-limiting
+    for url in (*OVERPASS_MIRRORS, OVERPASS):  # mirror first; the primary has been rate-limiting
         try:
             response = httpx.post(url, data={'data': query}, timeout=timeout, headers={'User-Agent': 'cicrando/0.1 terrain planner'})
             response.raise_for_status()
