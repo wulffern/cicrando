@@ -143,7 +143,7 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
     for summit in summits:
         mine = [(i, r['top_cells'][summit['id']]) for i, r in enumerate(runs) if summit['id'] in r['summits']]
         for i, st in router.legs(summit['cell'], mine, z, slope, forest, W, mosaic.north, horizontal, vertical):
-            runs[i].setdefault('approach', {})[summit['id']] = dict(line=st['line'], length_m=st['length_m'], gain_m=st['gain_m'], loss_m=st['loss_m'], max_slope=st['max_slope'], hours=st['hours'])
+            runs[i].setdefault('approach', {})[summit['id']] = dict(line=st['line'], length_m=st['length_m'], gain_m=st['gain_m'], loss_m=st['loss_m'], max_slope=st['max_slope'], hours=st['hours'], lake_m=st['lake_m'], runout_m=st['runout_m'])
     for r in runs:  # a summit without a gentle connector to the run top does not get that run
         r['summits'] = [sid for sid in r['summits'] if sid in r.get('approach', {})]
     runs = [r for r in runs if r['summits']]

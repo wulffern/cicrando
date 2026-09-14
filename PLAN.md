@@ -59,6 +59,14 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    tours whose summit→run connector needs real climb — i.e. skins back on mid-descent — since a
    least-cost connector can wander before reaching the run's actual top. The score also penalises
    this distance so the default best-option-per-summit already favours a clean single ski down.
+
+   Sensible parkings (2026-09-14): the Trondheim graph had a median parking→summit skin of
+   10 km / 4.9 h because town car parks within 12 km straight-line got legs and ascent time cost
+   only 40 pts/h. Now: `parking_spots` drops private/customers/permit lots, underground/
+   multi-storey/street-side/lane parking and residential-street parking (needs a rescan);
+   the planner charges 300 pts/h of skinning, defaults "Parking ≤ km" to 6, and hides legs
+   crossing >200 m of lake unless "Avoid lake crossings" is unchecked (no leg crosses sea — the
+   AR5 mask makes sea impassable; the "oceans" were Selbusjøen-sized lakes at 2x cost).
 1. Choose date and outing window; scrub a map time slider.
 2. Set editable minimum/maximum slope and aspect. South and north presets each span ±45° by default.
 3. Choose seek sunlight, seek shade, or aspect-only terrain matching. Display potential direct sunlight separately from forecast cloud cover.

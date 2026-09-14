@@ -22,6 +22,8 @@ from .toppturs import ascent_costs, find_peaks, path_stats
 
 logger = logging.getLogger('rando.loops')
 PLOWED = {'motorway', 'trunk', 'primary', 'secondary', 'tertiary'}
+NOT_PUBLIC = {'private', 'customers', 'permit', 'no', 'employees', 'residents'}
+NOT_TRAILHEAD = {'underground', 'multi-storey', 'rooftop', 'garage_boxes', 'street_side', 'lane', 'carports'}
 NVDB = 'https://nvdbapiles.atlas.vegvesen.no/vegobjekter'
 
 
@@ -120,6 +122,8 @@ def parking_spots(west, south, east, north, pad=5000):
         t = e.get('tags', {})
         geom = e.get('geometry') or ([{'lat': e['lat'], 'lon': e['lon']}] if 'lat' in e else [{'lat': e['center']['lat'], 'lon': e['center']['lon']}] if 'center' in e else [])
         if t.get('amenity') == 'parking':
+            if t.get('access') in NOT_PUBLIC or t.get('parking') in NOT_TRAILHEAD:
+                continue
             c = e.get('center') or {'lat': e.get('lat'), 'lon': e.get('lon')}
             if c.get('lat') is None and geom:   # ways come back with geometry, not center: use the centroid
                 c = {'lat': sum(n['lat'] for n in geom) / len(geom), 'lon': sum(n['lon'] for n in geom) / len(geom)}
@@ -151,7 +155,8 @@ def parking_spots(west, south, east, north, pad=5000):
             if np.hypot(ox - x, oy - y) <= o.get('radius_m', 300):
                 status = 'closed' if o['status'] == 'closed' else 'plowed'
         s['access'] = status; s['road'] = road
-    return spots
+    # Residential-street parking is a town car park, not a trailhead.
+    return [s for s in spots if s['road'] != 'residential']
 
 
 def run_candidates(pr, pc, z, band_len, counted, target, ok, slope, aspect, forest, max_runs=4, window_m=1500, below_m=350):
