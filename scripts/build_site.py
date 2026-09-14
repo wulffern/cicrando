@@ -43,6 +43,8 @@ for src in sorted((root / 'data').glob('graph-*.json'), reverse=True):
             lines.setdefault(block_of(e['to'] if e['kind'] == 'skin' else e['from']), {})[f"{e['from']}>{e['to']}>{e['kind']}"] = e.pop('line', None)
         for r in g['runs']:
             lines.setdefault(block_of(r['id']), {})[r['id']] = r.pop('line', None)
+            for sid, a in (r.get('approach') or {}).items():
+                lines[block_of(r['id'])][f"{r['id']}>{sid}>approach"] = a.pop('line', None)
         ldir.mkdir(parents=True)
         for blk, d in lines.items():
             (ldir / f'{blk}.json').write_text(json.dumps(d))

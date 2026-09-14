@@ -13,7 +13,7 @@ import numpy as np
 from scipy import ndimage
 
 from .loops import parking_spots, run_candidates
-from .search import build_mosaic, fall_line_drop, forest_mask
+from .search import build_mosaic, fall_line_drop, forest_mask, water_mask
 from .terrain import TO_LL, derivatives, finite
 from .toppturs import ascent_costs, find_peaks, path_stats
 from . import mesh
@@ -42,8 +42,8 @@ def line(cells, W, north, step):
 class Router:
     """Least-cost legs on the terrain-adaptive mesh (see backend.mesh), one Dijkstra per source."""
 
-    def __init__(self, costs, slope, refine_deg=15.0, endpoints=()):
-        self.costs, self.slope, self.refine_deg = costs, slope, refine_deg
+    def __init__(self, costs, slope, refine_deg=15.0, endpoints=(), water=None):
+        self.costs, self.slope, self.refine_deg, self.water = costs, slope, refine_deg, water
         self.endpoints = set(map(tuple, endpoints))
         self._build()
 
@@ -81,24 +81,26 @@ class Router:
             if not np.isfinite(dist[t]):
                 continue
             path = mesh.path_cells(pred, self.crow, self.ccol, self.size, t, (sr, sc), target_cells[i])
-            stats = path_stats(path[:, 0], path[:, 1], z, slope, forest, horizontal, vertical)
+            stats = path_stats(path[:, 0], path[:, 1], z, slope, forest, horizontal, vertical, self.water)
             stats['line'] = line(path, W, north, 8)
             out.append((i, stats))
         return out
 
 
-def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, horizontal=4, vertical=400, margin=12000, reach_km=12, walk_km=8, walk_gain=400):
+def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, horizontal=4, vertical=400, margin=12000, reach_km=12, walk_km=12, walk_gain=400, descent_max=35):
     W, S, E, N = west - margin, south - margin, east + margin, north + margin
     mosaic = build_mosaic(W, S, E, N); z = mosaic.z
     slope, aspect = derivatives(z, 10)
     forest = forest_mask(W, S, E, N, z.shape)
+    water = water_mask(W, S, E, N, z.shape)
     spots = parking_spots(west, south, east, north, pad=margin)
     if spots is None:
         raise RuntimeError('Parking/road data unavailable')
-    costs = ascent_costs(slope, max_ascent, lower)
+    costs = ascent_costs(slope, max_ascent, lower, water)
     smooth = ndimage.uniform_filter(np.nan_to_num(slope, nan=90.0), 3)
-    ok = (smooth < upper) & (smooth > 3) & np.isfinite(slope)
-    counted = ok & (smooth > lower)
+    # A run may cross short sections up to `descent_max` (reported), but never a raw ≥ descent_max cell.
+    ok = (smooth < descent_max) & (np.nan_to_num(slope, nan=90.0) < descent_max) & (smooth > 3) & np.isfinite(slope)
+    counted = ok & (smooth > lower) & (smooth < upper)
     (_, _, _, band_len), target = fall_line_drop(np.nan_to_num(z, nan=-1e9), ok.ravel(), counted.ravel())
     r0, c0 = margin // 10, margin // 10
     cell = lambda x, y: (int((mosaic.north - y) // 10), int((x - W) // 10))
@@ -115,10 +117,10 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
             # Merge with an existing run whose bottom is within 100 m and top within 200 m.
             twin = next((r for r in runs if np.hypot(r['bottom_cell'][0] - dr[-1], r['bottom_cell'][1] - dc[-1]) < 10 and np.hypot(r['top_cell'][0] - dr[0], r['top_cell'][1] - dc[0]) < 20), None)
             if twin:
-                twin['summits'].append(sid); continue
+                twin['summits'].append(sid); twin['top_cells'][sid] = (int(dr[0]), int(dc[0])); continue
             rid = f'{prefix}r{len(runs)}'
             entry = {k: v for k, v in run.items() if k not in ('cells', 'end')}
-            entry.update(id=rid, summits=[sid], top_cell=(int(dr[0]), int(dc[0])), bottom_cell=(int(dr[-1]), int(dc[-1])),
+            entry.update(id=rid, summits=[sid], top_cell=(int(dr[0]), int(dc[0])), top_cells={sid: (int(dr[0]), int(dc[0]))}, bottom_cell=(int(dr[-1]), int(dc[-1])),
                          top=[round(v, 5) for v in TO_LL.transform(W + dc[0] * 10 + 5, mosaic.north - dr[0] * 10 - 5)],
                          bottom=[round(v, 5) for v in TO_LL.transform(W + dc[-1] * 10 + 5, mosaic.north - dr[-1] * 10 - 5)],
                          line=line(np.column_stack([dr, dc]), W, mosaic.north, 3))
@@ -131,8 +133,16 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
     # Run discovery is complete; release full-block scratch rasters before allocating CSR.
     del smooth, ok, counted, band_len, target, aspect, _
     endpoints = ([s['cell'] for s in summits] + [p['cell'] for p in parkings]
-                 + [r['bottom_cell'] for r in runs])
-    router = Router(costs, slope, endpoints=endpoints)
+                 + [r['bottom_cell'] for r in runs] + [c for r in runs for c in r['top_cells'].values()])
+    router = Router(costs, slope, endpoints=endpoints, water=water)
+    # Connector from each summit to the top of each of its runs: a least-cost leg, never a straight line.
+    for summit in summits:
+        mine = [(i, r['top_cells'][summit['id']]) for i, r in enumerate(runs) if summit['id'] in r['summits']]
+        for i, st in router.legs(summit['cell'], mine, z, slope, forest, W, mosaic.north, horizontal, vertical):
+            runs[i].setdefault('approach', {})[summit['id']] = dict(line=st['line'], length_m=st['length_m'], gain_m=st['gain_m'], loss_m=st['loss_m'], max_slope=st['max_slope'], hours=st['hours'])
+    for r in runs:  # a summit without a gentle connector to the run top does not get that run
+        r['summits'] = [sid for sid in r['summits'] if sid in r.get('approach', {})]
+    runs = [r for r in runs if r['summits']]
     edges = []
     summit_targets = [(i, s['cell']) for i, s in enumerate(summits)]
     parking_targets = [(i, p['cell']) for i, p in enumerate(parkings)]
@@ -153,7 +163,7 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
     for s in summits:
         del s['cell']
     for r in runs:
-        del r['top_cell'], r['bottom_cell']
+        del r['top_cell'], r['bottom_cell'], r['top_cells']
     for p in parkings:
         del p['cell']
-    return dict(parkings=parkings, summits=summits, runs=runs, edges=edges, tiles_missing=mosaic.tiles_missing)
+    return dict(parkings=parkings, summits=summits, runs=runs, edges=edges, tiles_missing=mosaic.tiles_missing, water=water is not None)

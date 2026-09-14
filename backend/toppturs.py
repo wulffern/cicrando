@@ -28,15 +28,21 @@ def find_peaks(z, window_m=1500, min_elevation=900, min_relief=150):
     return np.argwhere(top & (relief >= min_relief))
 
 
-def ascent_costs(slope, max_ascent, lower=20):
-    """Cost per metre: gentle 1, 20–25° 1.3, 25–30° 1.8, 30–max 4; steeper or unknown impassable."""
+def ascent_costs(slope, max_ascent, lower=20, water=None):
+    """Cost per metre: gentle 1, 20–25° 1.3, 25–30° 1.8, 30–max 4; steeper or unknown impassable.
+
+    With an AR5 water grid: sea and glacier impassable, lakes crossable at double cost (ice unknown).
+    """
     cost = np.full(slope.shape, np.inf, dtype='float32')
     ok = np.isfinite(slope) & (slope < max_ascent)
     cost[ok] = 1 + np.select([slope[ok] >= 30, slope[ok] >= 25, slope[ok] >= lower], [3.0, 0.8, 0.3], 0)
+    if water is not None:
+        cost[water >= 2] = np.inf
+        cost[water == 1] *= 2
     return cost
 
 
-def path_stats(rows, cols, z, slope, forest, horizontal, vertical):
+def path_stats(rows, cols, z, slope, forest, horizontal, vertical, water=None):
     zs, raw = z[rows, cols], slope[rows, cols]
     xs, ys = cols * 10.0, rows * 10.0
     steps = np.hypot(np.diff(xs), np.diff(ys))
@@ -46,8 +52,10 @@ def path_stats(rows, cols, z, slope, forest, horizontal, vertical):
     return dict(length_m=round(length), gain_m=round(gain), loss_m=round(float(np.maximum(-dz, 0).sum())),
                 max_slope=finite(np.nanmax(raw)), mean_slope=finite(np.nanmean(raw)),
                 share_over_30=round(float(np.mean(raw >= 30)) * 100, 1), share_over_25=round(float(np.mean(raw >= 25)) * 100, 1),
+                share_band=round(float(np.mean((raw >= 20) & (raw < 30))) * 100, 1),
                 hours=round(length / 1000 / horizontal + gain / vertical, 2),
-                forest_share=None if forest is None else round(float((forest[rows, cols] > 0).mean()) * 100))
+                forest_share=None if forest is None else round(float((forest[rows, cols] > 0).mean()) * 100),
+                lake_m=None if water is None else int(np.sum(water[rows, cols] == 1)) * 10)
 
 
 def drive_minutes(origin, points):

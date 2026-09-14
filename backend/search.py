@@ -231,6 +231,61 @@ def forest_tile(tx, ty):
     return classes
 
 
+# AR5 "Arealtype" legend colours: fresh water, sea, glacier.
+WATER_COLOURS = {(145, 231, 255): 1, (204, 254, 254): 2, (230, 255, 255): 3}
+WATER_NAMES = {1: 'lake', 2: 'sea', 3: 'glacier'}
+
+
+def water_tile(tx, ty):
+    """AR5 water classes for one 4 km tile at 10 m: 0 land, 1 lake, 2 sea, 3 glacier."""
+    return _ar5_tile(tx, ty, 'Arealtype', WATER_COLOURS, 'ar5_arealtype')
+
+
+def water_mask(west, south, east, north, shape):
+    """Water class grid for the extent; None when NIBIO AR5 is unavailable."""
+    out = np.zeros(shape, dtype='uint8')
+    for ty in range(south, north, 4000):
+        for tx in range(west, east, 4000):
+            try:
+                tile = water_tile(tx, ty)
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning('AR5 water tile %s_%s unavailable: %s', tx, ty, exc)
+                return None
+            r0, c0 = (north - (ty + 4000)) // 10, (tx - west) // 10
+            out[r0:r0 + 400, c0:c0 + 400] = tile
+    return out
+
+
+def _ar5_tile(tx, ty, layer, colours, prefix):
+    CACHE.mkdir(parents=True, exist_ok=True)
+    path = CACHE / f'{prefix}_{tx}_{ty}_v1.png'
+    if not path.exists():
+        if os.getenv('RANDO_OFFLINE') == '1':
+            raise ValueError(f'{layer} tile not cached and RANDO_OFFLINE=1')
+        params = dict(service='WMS', request='GetMap', version='1.1.1', layers=layer, styles='', srs='EPSG:25833',
+                      bbox=f'{tx},{ty},{tx+4000},{ty+4000}', width=1000, height=1000, format='image/png', transparent='true')
+        response = httpx.get(AR5, params=params, timeout=90, headers={'User-Agent': 'cicrando/0.1 terrain planner'})
+        response.raise_for_status()
+        if not response.headers.get('content-type', '').startswith('image/png'):
+            raise ValueError('AR5 WMS returned no image')
+        tmp = path.with_name(f'{path.stem}.{os.getpid()}.tmp')
+        tmp.write_bytes(response.content)
+        try:
+            tmp.replace(path)
+        except FileNotFoundError:
+            tmp.unlink(missing_ok=True)
+    try:
+        rgba = np.array(Image.open(path).convert('RGBA').resize((400, 400), Image.NEAREST))
+    except (OSError, SyntaxError):
+        path.unlink(missing_ok=True)
+        logger.warning('Corrupt AR5 %s tile %s_%s replaced', layer, tx, ty)
+        return _ar5_tile(tx, ty, layer, colours, prefix)
+    classes = np.zeros((400, 400), dtype='uint8')
+    for colour, code in colours.items():
+        classes[(rgba[..., 3] > 0) & np.all(rgba[..., :3] == colour, axis=-1)] = code
+    return classes
+
+
 def forest_mask(west, south, east, north, shape):
     """Tree-species class grid for the search extent; None when NIBIO AR5 is unavailable."""
     out = np.zeros(shape, dtype='uint8')

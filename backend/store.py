@@ -23,6 +23,8 @@ def save(graph: dict, path: Path):
         lines.setdefault(blk, {})[f"{e['from']}>{e['to']}>{e['kind']}"] = e.pop('line', None)
     for r in g['runs']:
         lines.setdefault(block_of(r['id']), {})[r['id']] = r.pop('line', None)
+        for sid, a in (r.get('approach') or {}).items():
+            lines[block_of(r['id'])][f"{r['id']}>{sid}>approach"] = a.pop('line', None)
     ldir = path.with_suffix('.lines')
     shutil.rmtree(ldir, ignore_errors=True); ldir.mkdir(parents=True)
     for blk, d in lines.items():
@@ -42,4 +44,6 @@ def load(path: Path) -> dict:
             e['line'] = get(block_of(e['to'] if e['kind'] == 'skin' else e['from'])).get(f"{e['from']}>{e['to']}>{e['kind']}", [])
         for r in g['runs']:
             r['line'] = get(block_of(r['id'])).get(r['id'], [])
+            for sid, a in (r.get('approach') or {}).items():
+                a['line'] = get(block_of(r['id'])).get(f"{r['id']}>{sid}>approach", [])
     return g

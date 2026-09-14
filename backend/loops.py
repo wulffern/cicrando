@@ -121,6 +121,8 @@ def parking_spots(west, south, east, north, pad=5000):
         geom = e.get('geometry') or ([{'lat': e['lat'], 'lon': e['lon']}] if 'lat' in e else [{'lat': e['center']['lat'], 'lon': e['center']['lon']}] if 'center' in e else [])
         if t.get('amenity') == 'parking':
             c = e.get('center') or {'lat': e.get('lat'), 'lon': e.get('lon')}
+            if c.get('lat') is None and geom:   # ways come back with geometry, not center: use the centroid
+                c = {'lat': sum(n['lat'] for n in geom) / len(geom), 'lon': sum(n['lon'] for n in geom) / len(geom)}
             if c.get('lat') is not None:
                 spots.append(dict(lon=c['lon'], lat=c['lat'], name=t.get('name'), tags={k: t[k] for k in ('access', 'fee', 'parking', 'capacity', 'winter_service', 'description') if k in t}))
         elif 'highway' in t:
@@ -152,12 +154,13 @@ def parking_spots(west, south, east, north, pad=5000):
     return spots
 
 
-def run_candidates(pr, pc, z, band_len, counted, target, ok, slope, aspect, forest, max_runs=4):
+def run_candidates(pr, pc, z, band_len, counted, target, ok, slope, aspect, forest, max_runs=4, window_m=1500, below_m=350):
     """Up to `max_runs` distinct fall-line runs starting within 800 m / 200 m below the summit."""
     # Work in a window around the summit; the full grid is tens of millions of cells.
-    r0, r1 = max(0, pr - 80), min(z.shape[0], pr + 81); c0, c1 = max(0, pc - 80), min(z.shape[1], pc + 81)
+    w = window_m // 10
+    r0, r1 = max(0, pr - w), min(z.shape[0], pr + w + 1); c0, c1 = max(0, pc - w), min(z.shape[1], pc + w + 1)
     rr, cc = np.ogrid[r0:r1, c0:c1]
-    near = ((rr - pr) ** 2 + (cc - pc) ** 2 <= 80 ** 2) & counted[r0:r1, c0:c1] & (np.nan_to_num(z[r0:r1, c0:c1], nan=-1e9) >= z[pr, pc] - 200)
+    near = ((rr - pr) ** 2 + (cc - pc) ** 2 <= w ** 2) & counted[r0:r1, c0:c1] & (np.nan_to_num(z[r0:r1, c0:c1], nan=-1e9) >= z[pr, pc] - below_m)
     local = np.where(near, band_len[r0:r1, c0:c1], 0)
     order_local = np.argsort(-local.ravel())[:400]
     order = (order_local // (c1 - c0) + r0) * z.shape[1] + (order_local % (c1 - c0) + c0)
@@ -172,12 +175,13 @@ def run_candidates(pr, pc, z, band_len, counted, target, ok, slope, aspect, fore
         if any(np.hypot(dr[-1] - er, dc[-1] - ec) < 60 for er, ec in ends):
             continue  # same run, different top cell
         raw = slope[dr, dc]
-        if not 19 <= np.nanmean(raw) <= 30 or inband[:len(run)].mean() < 0.6:
+        if not 19 <= np.nanmean(raw) <= 32 or inband[:len(run)].mean() < 0.6:
             continue
         asp = aspect[dr, dc]; asp = asp[np.isfinite(asp)]
         mean_aspect = float(np.degrees(np.arctan2(np.sin(np.radians(asp)).mean(), np.cos(np.radians(asp)).mean())) % 360) if len(asp) else None
         trees = None if forest is None else forest[dr, dc]
         runs.append(dict(cells=run, end=(int(dr[-1]), int(dc[-1])), band_length_m=round(float(band_len.ravel()[top])), drop=finite(z[dr[0], dc[0]] - z[dr[-1], dc[-1]]),
+                         over30_m=round(float(np.sum(raw >= 30)) * 10), length_m=round(len(run) * 10),
                          top_elevation=finite(z[dr[0], dc[0]]), bottom_elevation=finite(z[dr[-1], dc[-1]]), mean_slope=finite(np.nanmean(raw)), max_slope=finite(np.nanmax(raw)),
                          steep_share=round(float(np.mean(raw >= 30)) * 100, 1), band_share=round(float(inband[:len(run)].mean()) * 100), aspect=finite(mean_aspect) if mean_aspect is not None else None,
                          forest_share=None if trees is None else round(float((trees > 0).mean()) * 100),

@@ -19,7 +19,7 @@ from .terrain import TO_UTM
 from .toppturs import drive_minutes
 
 ROUTING = dict(lower=20, upper=30, max_ascent=35, horizontal=4, vertical=400,
-               margin=12000, reach_km=12, walk_km=8, walk_gain=400)
+               margin=12000, reach_km=12, walk_km=12, walk_gain=400, descent_max=35)
 
 
 def parking_key(lon, lat):
@@ -29,7 +29,7 @@ def parking_key(lon, lat):
 
 def cache_directory(root, routing):
     overrides = Path('data/winter_roads.json')
-    identity = dict(algorithm='adaptive-portals-v3', terrain='Kartverket-DTM-10m', routing=routing,
+    identity = dict(algorithm='adaptive-portals-v5-water', terrain='Kartverket-DTM-10m', routing=routing,
                     winter_overrides=overrides.read_text() if overrides.exists() else '')
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:16]
     return Path(root) / 'graph-v3' / digest
