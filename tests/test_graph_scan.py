@@ -135,3 +135,13 @@ def test_terrain_buffer_expands_selection_without_changing_cached_routing(monkey
     assert scan.cache_directory(tmp_path, standard['routing']) == scan.cache_directory(tmp_path, wider['routing'])
     plowed = scan.plan_scan(region, 2, access='plowed')
     assert not plowed['eligible_parkings'] and not plowed['terrain_blocks']
+
+
+def test_store_thin_keeps_elevation(tmp_path):
+    from backend.store import save, load
+    line = [[9.0, 62.0, 500.0], [9.001, 62.0, 510.0], [9.002, 62.0, 520.0], [9.003, 62.0, 530.0], [9.004, 62.0, 540.0]]
+    g = dict(parkings=[], summits=[], runs=[], edges=[dict(**{'from': 'a_b_p0', 'to': 'a_b_s0', 'kind': 'skin'}, hours=1, line=line)])
+    save(g, tmp_path / 'g.json')
+    back = load(tmp_path / 'g.json')
+    pts = back['edges'][0]['line']
+    assert all(len(p) == 3 for p in pts) and pts[0][2] == 500.0 and pts[-1][2] == 540.0

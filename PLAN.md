@@ -75,6 +75,14 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    `terrain.geo_bbox` now encloses all four corners (access cache bumped to v2; `roads()` too).
    Per-summit option order is now: no skins back on first, then shortest day, run length last.
 
+## Trondheim - 4 h drive (2026-09-15)
+
+73 blocks (30 km band, E14 leg to Åre), 3,312 parkings, 852 summits, 961 runs, 32,686 legs;
+parkings/roads from the local Geofabrik index plus 55 NVDB areas; legs carry elevation, runout
+and lake metres; 38 summits on Copernicus terrain. Skaret → Tjønnpiken 4.7 km / 2.3 h (and
+Skarbakkan 1.8 km) — both missing before the bbox fix. Runout: 21,380 legs touch the
+conservative NVE zone (max 2.3 km) — it covers most valley floors, so it stays a cost, not a ban.
+
 ## Sweden (2026-09-15)
 
 - Kartverket's NHM DTM already extends ~55 km into Sweden (real 10 m data at Storlien and
