@@ -21,7 +21,7 @@ from . import mesh
 logger = logging.getLogger('rando.graph')
 
 
-def line(cells, W, north, step):
+def line(cells, W, north, step, z=None):
     # Only omit collinear cells. Keep every turn and cap segment length; arbitrary
     # subsampling can draw a chord through terrain the walked path avoided.
     cells = np.asarray(cells)
@@ -35,8 +35,11 @@ def line(cells, W, north, step):
     if len(selected) == 1:
         selected = np.repeat(selected, 2, axis=0)
     lon, lat = TO_LL.transform(W + selected[:, 1] * 10 + 5, north - selected[:, 0] * 10 - 5)
-    pts = np.round(np.column_stack((lon, lat)), 7).tolist()
-    return pts
+    pts = np.round(np.column_stack((lon, lat)), 7)
+    if z is not None:
+        elev = np.round(z[selected[:, 0], selected[:, 1]], 1)
+        pts = np.column_stack((pts, elev))
+    return pts.tolist()
 
 
 class Router:
@@ -82,7 +85,7 @@ class Router:
                 continue
             path = mesh.path_cells(pred, self.crow, self.ccol, self.size, t, (sr, sc), target_cells[i])
             stats = path_stats(path[:, 0], path[:, 1], z, slope, forest, horizontal, vertical, self.water, self.runout)
-            stats['line'] = line(path, W, north, 8)
+            stats['line'] = line(path, W, north, 8, z)
             out.append((i, stats))
         return out
 
@@ -124,7 +127,7 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
             entry.update(id=rid, summits=[sid], top_cell=(int(dr[0]), int(dc[0])), top_cells={sid: (int(dr[0]), int(dc[0]))}, bottom_cell=(int(dr[-1]), int(dc[-1])),
                          top=[round(v, 5) for v in TO_LL.transform(W + dc[0] * 10 + 5, mosaic.north - dr[0] * 10 - 5)],
                          bottom=[round(v, 5) for v in TO_LL.transform(W + dc[-1] * 10 + 5, mosaic.north - dr[-1] * 10 - 5)],
-                         line=line(np.column_stack([dr, dc]), W, mosaic.north, 3))
+                         line=line(np.column_stack([dr, dc]), W, mosaic.north, 3, z))
             runs.append(entry)
     parkings = []
     for s in spots:

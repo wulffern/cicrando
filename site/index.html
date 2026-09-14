@@ -43,6 +43,10 @@ select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--
 .cand small{color:var(--mute);grid-column:1/-1}
 .badge{display:inline-block;padding:1px 6px;border-radius:999px;font-size:11px;font-weight:700;color:#fff;background:var(--mute)}
 .badge.plowed{background:var(--ok)}.badge.unknown{background:var(--maybe)}.badge.closed{background:var(--warn)}
+.profile-wrap{margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.profile-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--ink2);margin-bottom:4px}
+.profile-head b{font-family:"Barlow Semi Condensed",sans-serif;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+#profile svg{width:100%;height:70px;display:block}
 .legend{position:absolute;left:10px;bottom:10px;background:rgba(255,253,248,.92);padding:6px 10px;border-radius:8px;font-size:12px;display:flex;gap:10px;flex-wrap:wrap;z-index:2}
 .legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}.legend i.dot{width:9px;height:9px;border-radius:50%}
 .caution{margin:12px 18px 24px;padding:8px 10px;border-radius:8px;background:#fff5d6;color:#5c4a12;font-size:12.5px}
@@ -75,6 +79,7 @@ select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--
     <label>Run ≥ m<input id="f-run" type="number" value="300" step="50" min="0"></label>
     <label>Run max slope<select id="f-runmax"><option value="35">≤ 35°</option><option value="30">≤ 30°</option></select></label>
     <label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0"><input id="f-loop" type="checkbox" style="width:auto">Loop only (gentle way back found)</label>
+    <label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0"><input id="f-continuous" type="checkbox" style="width:auto">Ski continuously (no skins back on to reach the run)</label>
     <label>Facing<select id="f-face"><option value="all">Any</option><option value="N">North (315–45°)</option><option value="E">East (45–135°)</option><option value="S">South (135–225°)</option><option value="W">West (225–315°)</option></select></label>
     <label>Sort<select id="f-sort"><option value="run">Run length</option><option value="total">Total time</option><option value="drive">Drive</option><option value="elev">Elevation</option><option value="name">Name</option></select></label>
     <label>Access<select id="f-access"><option value="open">Not closed</option><option value="plowed">Plowed only</option><option value="all">All</option></select></label>
@@ -92,6 +97,10 @@ select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--
    </div>
    <ol class="legs" id="legs"></ol>
    <div class="totals" id="totals"></div>
+   <div class="profile-wrap" id="profile-wrap" hidden>
+    <div class="profile-head"><b>Height profile</b><span id="profile-meta"></span></div>
+    <div id="profile"></div>
+   </div>
    <div class="toolbar"><button id="gpx" class="primary">Download GPX</button><button id="share">Copy link</button><a id="drive" target="_blank" rel="noreferrer" style="font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);text-decoration:none;font-weight:600">Drive to parking</a></div>
   </div>
   <p class="caution" style="background:none;color:var(--mute)">Also: <a href="trondelag-ski-faces.html">Trøndelag ski faces</a> · <a href="skarvatnet-toppturer.html">Skarvatnet toppturer (nearest-road scan)</a> · <a href="https://github.com/wulffern/cicrando">source</a> · terrain © Kartverket, steepness/runout © NVE, roads/parking © OpenStreetMap, forest © NIBIO.</p>
@@ -131,21 +140,23 @@ function index(){
  for(const r of G.runs)for(const s of r.summits)(runsOf[s]??=[]).push(r);
 }
 function accessOk(p){const a=$('f-access').value;return a==='all'||(a==='open'?p.access!=='closed':p.access==='plowed')}
+const RESKIN_M=15; // approach-to-run climb above this means skins go back on mid-descent
 function loopsFor(sid){ // (parking, run) combos, best first; back leg optional
- const out=[];const drive=+$('f-drive').value,slope=+$('f-slope').value,minRun=+$('f-run').value,maxKm=+$('f-park').value*1000,face=$('f-face').value,runMax=+$('f-runmax').value,loopOnly=$('f-loop').checked;
+ const out=[];const drive=+$('f-drive').value,slope=+$('f-slope').value,minRun=+$('f-run').value,maxKm=+$('f-park').value*1000,face=$('f-face').value,runMax=+$('f-runmax').value,loopOnly=$('f-loop').checked,continuousOnly=$('f-continuous').checked;
  const s=node[sid];
  for(const up of skinTo[sid]||[]){const p=node[up.from];if(!accessOk(p)||(p.drive_min??999)>drive||up.max_slope>slope||up.length_m>maxKm*1.6)continue;
   const runs=(runsOf[sid]||[]).filter(r=>r.band_length_m>=minRun&&(face==='all'||sector(r.aspect)===face)&&(r.max_slope??0)<=runMax&&r.approach&&r.approach[sid]);
-  for(const r of runs){const ap=r.approach[sid];const back=(walkFrom[r.id]||[]).find(e=>e.to===p.id&&e.max_slope<=slope)||null;
+  for(const r of runs){const ap=r.approach[sid];const reskin=Math.round(ap.gain_m||0);if(continuousOnly&&reskin>RESKIN_M)continue;
+   const back=(walkFrom[r.id]||[]).find(e=>e.to===p.id&&e.max_slope<=slope)||null;
    if(loopOnly&&!back)continue;
    const dist=km(r.bottom,p.lonlat);
    const down={hours:ap.hours+r.band_length_m/8000,ap};
-   out.push({p,r,up,back,down,ap,dist,total:up.hours+down.hours+(back?back.hours:0),score:r.band_length_m-(back?0.3*back.length_m+3*back.gain_m:600*dist)-40*up.hours-2*(r.over30_m||0)});}
+   out.push({p,r,up,back,down,ap,reskin,dist,total:up.hours+down.hours+(back?back.hours:0),score:r.band_length_m-(back?0.3*back.length_m+3*back.gain_m:600*dist)-40*up.hours-2*(r.over30_m||0)-3*reskin});}
   // Fallback: ski the ascent line back down (always closes the loop); only when this parking has no real run.
   const realHere=out.some(o=>o.p===p&&!o.r.synthetic);
   if(!realHere){const share=up.share_band??null;if(share!==null&&up.length_m*share/100>=minRun&&face==='all'&&up.max_slope<=runMax){
    const r={id:'up:'+up.from+'>'+sid,band_length_m:Math.round(up.length_m*share/100),drop:up.gain_m,top_elevation:s.elevation,bottom_elevation:s.elevation-up.gain_m,mean_slope:null,max_slope:up.max_slope,steep_share:up.share_over_30,aspect:null,forest_share:up.forest_share,forest_type:null,start_offset_m:0,over30_m:Math.round(up.length_m*up.share_over_30/100),length_m:up.length_m,bottom:p.lonlat,synthetic:true};
-   out.push({p,r,up,back:null,down:{hours:up.length_m/8000,ap:null},ap:null,dist:0,total:up.hours+up.length_m/8000,score:Math.min(r.band_length_m,400)*0.5-60*up.hours-1000});}}
+   out.push({p,r,up,back:null,down:{hours:up.length_m/8000,ap:null},ap:null,reskin:0,dist:0,total:up.hours+up.length_m/8000,score:Math.min(r.band_length_m,400)*0.5-60*up.hours-1000});}}
  }
  return out.sort((a,b)=>b.score-a.score);
 }
@@ -156,7 +167,7 @@ function list(){
  let rows=G.summits.filter(s=>loops[s.id]&&(!q||(s.name||'unnamed').toLowerCase().includes(q)));
  rows.sort((a,b)=>{const A=loops[a.id][0],B=loops[b.id][0];return sort==='run'?B.r.band_length_m-A.r.band_length_m:sort==='total'?A.total-B.total:sort==='drive'?(A.p.drive_min??999)-(B.p.drive_min??999):sort==='elev'?b.elevation-a.elevation:(a.name||'zz').localeCompare(b.name||'zz')});
  $('count').textContent=`${rows.length} summits with a loop from parking (${G.summits.length} scanned)`;
- $('summits').innerHTML=rows.slice(0,150).map(s=>{const L=loops[s.id][0];return `<li><button class="cand" data-id="${s.id}"><strong>${s.name||'Unnamed summit'} ${Math.round(s.elevation)} m</strong><span>${L.p.drive_min??'?'} min drive</span><small>From ${L.p.name||'parking'} <span class="badge ${L.p.access}">${L.p.access}</span> · up ${dur(L.up.hours)} max ${L.up.max_slope.toFixed(0)}° · ${L.r.synthetic?'ski the ascent line':`ski ${L.r.band_length_m} m ${compass(L.r.aspect)}${L.r.max_slope>30?' ('+L.r.max_slope.toFixed(0)+'°)':''}`} · ${L.back||L.r.synthetic?'loop':L.dist.toFixed(1)+' km to car'} · ${dur(L.total)} · ${loops[s.id].length} option${loops[s.id].length>1?'s':''}</small></button></li>`}).join('');
+ $('summits').innerHTML=rows.slice(0,150).map(s=>{const L=loops[s.id][0];return `<li><button class="cand" data-id="${s.id}"><strong>${s.name||'Unnamed summit'} ${Math.round(s.elevation)} m</strong><span>${L.p.drive_min??'?'} min drive</span><small>From ${L.p.name||'parking'} <span class="badge ${L.p.access}">${L.p.access}</span> · up ${dur(L.up.hours)} max ${L.up.max_slope.toFixed(0)}° · ${L.r.synthetic?'ski the ascent line':`ski ${L.r.band_length_m} m ${compass(L.r.aspect)}${L.r.max_slope>30?' ('+L.r.max_slope.toFixed(0)+'°)':''}`}${L.reskin>RESKIN_M?` <b class="warn">· re-skin ${L.reskin} m</b>`:''} · ${L.back||L.r.synthetic?'loop':L.dist.toFixed(1)+' km to car'} · ${dur(L.total)} · ${loops[s.id].length} option${loops[s.id].length>1?'s':''}</small></button></li>`}).join('');
  drawNodes();
 }
 function drawNodes(){map.getSource('nodes').setData({type:'FeatureCollection',features:[...G.summits.map(s=>({type:'Feature',properties:{id:s.id,type:'s',ok:!!loops[s.id],on:sel?.s===s.id},geometry:{type:'Point',coordinates:s.lonlat}})),...(sel?[{type:'Feature',properties:{id:sel.p,type:'p',access:node[sel.p].access,on:true},geometry:{type:'Point',coordinates:node[sel.p].lonlat}}]:[])]});}
@@ -177,7 +188,7 @@ function show(cur){
  const r=cur.r;
  $('legs').innerHTML=leg('park',`${cur.p.name||'Parking'}${cur.p.road?` (${cur.p.road})`:''}`,null,`<span class="badge ${cur.p.access}">${cur.p.access}</span> ${cur.p.drive_min??'?'} min drive · ${cur.p.lonlat[1].toFixed(4)}, ${cur.p.lonlat[0].toFixed(4)}`)
   +leg('skin','Skin up',cur.up,`${dur(cur.up.hours)} · +${cur.up.gain_m} m / −${cur.up.loss_m} m over ${(cur.up.length_m/1000).toFixed(1)} km · max <b class="${cur.up.max_slope>=30?'warn':'ok'}">${cur.up.max_slope.toFixed(0)}°</b>${cur.up.share_over_30>0?` <b class="warn">· ${cur.up.share_over_30}% on 30–35°</b>`:''} · forest ${cur.up.forest_share??'?'}%${lake(cur.up)}`)
-  +(cur.ap&&cur.ap.length_m>60?leg('walk','To the run start',cur.ap,`${dur(cur.ap.hours)} · ${cur.ap.length_m} m, +${cur.ap.gain_m} / −${cur.ap.loss_m} m · max <b class="${cur.ap.max_slope>=30?'warn':'ok'}">${cur.ap.max_slope.toFixed(0)}°</b>${lake(cur.ap)}`):'')
+  +(cur.ap&&cur.ap.length_m>60?leg(cur.reskin>RESKIN_M?'skin':'walk',cur.reskin>RESKIN_M?'Skins back on to the run':'To the run start',cur.ap,`${dur(cur.ap.hours)} · ${cur.ap.length_m} m, +${cur.ap.gain_m} / −${cur.ap.loss_m} m · max <b class="${cur.ap.max_slope>=30?'warn':'ok'}">${cur.ap.max_slope.toFixed(0)}°</b>${cur.reskin>RESKIN_M?` <b class="warn">· re-skin ${cur.reskin} m</b>`:''}${lake(cur.ap)}`):'')
   +(r.synthetic
     ?leg('run','Ski the ascent line',null,`${dur(cur.down.hours)} · ${r.band_length_m} m of the ${(r.length_m/1000).toFixed(1)} km line is 20–30° (${cur.up.share_band}%) · max ${r.max_slope.toFixed(0)}°${r.steep_share>0?` <b class="warn">· ${r.steep_share}% on 30–35°</b>`:''}`)
     :leg('run',`Ski ${compass(r.aspect)} ${Math.round(r.aspect)}°`,null,`${dur(cur.down.hours)} · ${r.band_length_m} m of 20–30° in a ${r.length_m} m run, ${Math.round(r.drop)} m drop (${Math.round(r.top_elevation)}→${Math.round(r.bottom_elevation)} m) · mean ${r.mean_slope.toFixed(0)}°, max <b class="${r.max_slope>30?'warn':'ok'}">${r.max_slope.toFixed(0)}°</b>${r.over30_m>0?` <b class="warn">· ${r.over30_m} m on 30–35°</b>`:''} · ${r.forest_share?`${r.forest_type==='deciduous'?'birch':r.forest_type==='conifer'?'spruce':'mixed'} ${r.forest_share}%`:'open'}`))
@@ -186,6 +197,7 @@ function show(cur){
  const mx=Math.max(cur.up.max_slope,cur.back?cur.back.max_slope:0,cur.ap?cur.ap.max_slope:0);
  $('totals').innerHTML=`<div><b>${dur(cur.total)}</b><span>moving</span></div><div><b>+${cur.up.gain_m+(cur.back?cur.back.gain_m:0)+(cur.ap?cur.ap.gain_m:0)} m</b><span>climb</span></div><div><b class="${mx>=30?'warn':'ok'}">${mx.toFixed(0)}°</b><span>max on skins</span></div><div><b>${cur.back||cur.r.synthetic?'loop':'open'}</b><span>${cur.back||cur.r.synthetic?'back at car':cur.dist.toFixed(1)+' km to car'}</span></div>`;
  $('drive').href=`https://www.google.com/maps/dir/?api=1&origin=${G.origin[1]},${G.origin[0]}&destination=${cur.p.lonlat[1]},${cur.p.lonlat[0]}`;
+ buildProfile(cur);
  const feats=[{type:'Feature',properties:{kind:'skin'},geometry:{type:'LineString',coordinates:cur.up.line}}];
  if(cur.down.apline&&cur.down.apline.length>1)feats.push({type:'Feature',properties:{kind:'walk'},geometry:{type:'LineString',coordinates:cur.down.apline}});
  feats.push({type:'Feature',properties:{kind:'run'},geometry:{type:'LineString',coordinates:cur.r.synthetic?cur.down.line:runLine(cur.r)}});
@@ -194,13 +206,31 @@ function show(cur){
  drawNodes();const b=new maplibregl.LngLatBounds();for(const f of feats)for(const q of f.geometry.coordinates)b.extend(q);map.fitBounds(b,{padding:{top:60,bottom:innerWidth<=800?innerHeight*0.5+20:60,left:60,right:60},maxZoom:13.5,duration:600});
  location.hash=`${sel.s},${sel.p},${sel.r}`;if(innerWidth<=800)$('panel').className='panel';
 }
+function buildProfile(cur){
+ const segs=[['skin',cur.up.line]];
+ if(cur.down.apline&&cur.down.apline.length>1)segs.push(['walk',cur.down.apline]);
+ segs.push(['run',cur.r.synthetic?cur.down.line:runLine(cur.r)]);
+ if(cur.back)segs.push(['walk',cur.back.line]);
+ if(!segs.every(([,l])=>l.length>1&&l[0].length>2)){$('profile-wrap').hidden=true;return;} // older graphs have no elevation per point
+ let dist=0,prev=null;
+ const chunks=segs.map(([kind,l])=>({kind,pts:l.map(p=>{if(prev)dist+=km(prev,p)*1000;prev=p;return{d:dist,e:p[2]};})}));
+ const all=chunks.flatMap(c=>c.pts);
+ const eMin=Math.min(...all.map(p=>p.e)),eMax=Math.max(...all.map(p=>p.e));
+ const total=dist||1,W=100,H=32,padY=2.5;
+ const x=v=>(v/total*W).toFixed(2),y=e=>(padY+(eMax-e)/((eMax-eMin)||1)*(H-2*padY)).toFixed(2);
+ const colors={skin:'#2b6cb0',run:'#d9480f',walk:'#6b7f7a'};
+ const polys=chunks.map(c=>`<polyline fill="none" stroke="${colors[c.kind]}" stroke-width="1.4" vector-effect="non-scaling-stroke" points="${c.pts.map(p=>`${x(p.d)},${y(p.e)}`).join(' ')}"/>`).join('');
+ $('profile').innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${polys}</svg>`;
+ $('profile-meta').textContent=`${Math.round(eMin)}–${Math.round(eMax)} m · ${(total/1000).toFixed(1)} km`;
+ $('profile-wrap').hidden=false;
+}
 function close(){sel=null;$('step-tour').hidden=true;$('step-list').hidden=false;map.getSource('route').setData({type:'FeatureCollection',features:[]});drawNodes();location.hash='';}
 map.on('click','summits',e=>{const id=e.features?.[0]?.properties?.id;if(id&&loops[id]){pick(id);e.preventDefault();}});
 map.on('mouseenter','summits',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','summits',()=>map.getCanvas().style.cursor='');
 $('summits').addEventListener('click',e=>{const b=e.target.closest('.cand');if(b)pick(b.dataset.id);});
 $('close').addEventListener('click',close);
 $('o-park').addEventListener('change',e=>pick(sel.s,e.target.value));$('o-run').addEventListener('change',e=>pick(sel.s,sel.p,e.target.value));
-for(const id of ['f-drive','f-slope','f-run','f-runmax','f-loop','f-face','f-access','f-park'])$(id).addEventListener('input',()=>{compute();if(sel&&loops[sel.s])pick(sel.s,sel.p,sel.r);else{close();}list();});
+for(const id of ['f-drive','f-slope','f-run','f-runmax','f-loop','f-continuous','f-face','f-access','f-park'])$(id).addEventListener('input',()=>{compute();if(sel&&loops[sel.s])pick(sel.s,sel.p,sel.r);else{close();}list();});
 $('q').addEventListener('input',list);$('f-sort').addEventListener('input',list);
 $('share').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(location.href);$('share').textContent='Copied';setTimeout(()=>$('share').textContent='Copy link',1500)}catch{}});
 $('gpx').addEventListener('click',()=>{if(!sel)return;const cur=loops[sel.s].find(l=>l.p.id===sel.p&&l.r.id===sel.r);const s=node[sel.s];const esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;');

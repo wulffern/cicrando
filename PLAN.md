@@ -38,7 +38,7 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    origin via OSRM. First run: 13 blocks around Skarvatnet, 476 summits, 169 within 60 min.
    Not yet in the app UI — script + review page only.
 0c. Route graph + planner (2026-09-13, `backend/loops.py`, `backend/graph.py`, `scripts/graph_scan.py`,
-   `site/route.html`): tours start and end at OSM parking spots; winter access classed plowed /
+   `site/index.html`): tours start and end at OSM parking spots; winter access classed plowed /
    unknown / closed (OSM tags, NVDB 810 "Ingen vinterdrift", `data/winter_roads.json`); legs are
    least-cost paths from parkings and run bottoms to summits (≤7 km) and from run bottoms to parkings
    (≤5 km, ≤250 m climb). The static page chains legs by shortest time — loops and multi-run days —
@@ -49,6 +49,16 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    Bratthet_med_utlop service, decoded like the existing AR5 water mask) at 1.5x cost — advisory,
    not impassable, since it is a model output rather than a checked hazard; `runout_m` on each leg
    reports the crossed distance.
+
+   Leg geometry now carries elevation per vertex (`backend/graph.py::line(..., z)`); the planner
+   draws a height profile (distance × elevation, colour-coded skin/run/walk) when a tour is
+   selected. Older published graphs lack per-point elevation and the profile hides itself rather
+   than showing something wrong; a rescan is needed before it appears for a given area.
+
+   A "ski continuously" filter (`RESKIN_M = 15 m` in `site/index.html`) flags and can exclude
+   tours whose summit→run connector needs real climb — i.e. skins back on mid-descent — since a
+   least-cost connector can wander before reaching the run's actual top. The score also penalises
+   this distance so the default best-option-per-summit already favours a clean single ski down.
 1. Choose date and outing window; scrub a map time slider.
 2. Set editable minimum/maximum slope and aspect. South and north presets each span ±45° by default.
 3. Choose seek sunlight, seek shade, or aspect-only terrain matching. Display potential direct sunlight separately from forecast cloud cover.

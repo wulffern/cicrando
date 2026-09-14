@@ -198,3 +198,13 @@ def test_path_stats_reports_runout_length():
     stats = path_stats(rows, cols, z, slope, None, 4, 400, runout=runout)
     assert stats['runout_m'] == 20
     assert path_stats(rows, cols, z, slope, None, 4, 400)['runout_m'] is None
+
+
+def test_line_includes_elevation_when_z_given():
+    from backend.graph import line
+    path = np.array([(0, 0), (0, 1), (0, 2)])
+    z = np.array([[100.0, 110.0, 125.5]])
+    without_z = line(path, 200000, 7000000, 8)
+    assert all(len(pt) == 2 for pt in without_z)
+    with_z = line(path, 200000, 7000000, 8, z)
+    assert [pt[2] for pt in with_z] == [100.0, 125.5]
