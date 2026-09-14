@@ -108,3 +108,53 @@ def test_route_with_missing_terrain_withholds_estimate():
     assert r['hours'] is None and r['ascent_m'] is None and r['in_target'] is None
     assert not r['complete'] and 40 < r['coverage'] < 60
     assert any(p['elevation'] is None for p in r['profile'])
+
+
+def test_copernicus_fills_only_cells_outside_kartverket(monkeypatch, tmp_path):
+    """NaN means outside Kartverket coverage (sea is 0); those cells come from Copernicus and are flagged."""
+    import numpy as np
+    from backend import terrain
+    from rasterio.transform import from_origin
+    import rasterio
+    monkeypatch.setattr(terrain, 'CACHE', tmp_path)
+    z = np.full((400, 400), 500.0, dtype='float32'); z[:, 200:] = np.nan
+    path = tmp_path / 'kart.tif'
+    with rasterio.open(path, 'w', driver='GTiff', width=400, height=400, count=1, dtype='float32', crs='EPSG:25833', transform=from_origin(400000, 7030000, 10, 10), nodata=-9999) as dst:
+        dst.write(np.nan_to_num(z, nan=-9999), 1)
+    class R:
+        content = path.read_bytes()
+        def raise_for_status(self): pass
+    monkeypatch.setattr(terrain.httpx, 'get', lambda *a, **k: R())
+    monkeypatch.setattr(terrain, 'copernicus_raster', lambda w, s, size, res: np.full((400, 400), 700.0, dtype='float32'))
+    r = terrain.fetch_raster(400000, 7026000, 4000, 10)
+    assert (r.z[:, :200] == 500).all() and (r.z[:, 200:] == 700).all()
+    assert r.coarse is not None and r.coarse[:, 200:].all() and not r.coarse[:, :200].any()
+    monkeypatch.setattr(terrain, 'copernicus_raster', lambda *a: None)
+    r = terrain.fetch_raster(400000, 7026000, 4000, 10)   # cached Kartverket tile; fill unavailable
+    assert np.isnan(r.z[:, 200:]).all() and r.coarse is None
+
+
+def test_copernicus_warp_maps_a_lat_lon_plane_onto_the_utm_grid(monkeypatch, tmp_path):
+    """A synthetic 1° COG whose value equals latitude must land at the right UTM rows; the seam fill must not leak."""
+    import numpy as np
+    from backend import terrain
+    from rasterio.transform import from_origin
+    import rasterio
+    monkeypatch.setattr(terrain, 'CACHE', tmp_path)
+    lat0, lon0 = 63, 13
+    rows, cols = 3600, 1800
+    lats = lat0 + 1 - (np.arange(rows) + 0.5) / rows
+    grid = np.repeat(lats[:, None].astype("float32"), cols, axis=1) * 10   # 630..640 "m", follows latitude
+    src_path = tmp_path / 'cop.tif'
+    with rasterio.open(src_path, 'w', driver='GTiff', width=cols, height=rows, count=1, dtype='float32', crs='EPSG:4326', transform=from_origin(lon0, lat0 + 1, 1 / cols, 1 / rows)) as dst:
+        dst.write(grid, 1)
+    monkeypatch.setattr(terrain, 'COPERNICUS', str(src_path).replace('cop.tif', 'cop.tif#{lat}{lon}'))
+    real_open = rasterio.open
+    monkeypatch.setattr(terrain.rasterio, 'open', lambda url, *a, **k: real_open(str(url).split('#')[0], *a, **k))
+    # Tile fully inside the 1° cell (63.0-64.0N, 13-14E): must have no NaN and follow latitude.
+    x, y = terrain.TO_UTM.transform(13.5, 63.5); x, y = int(x // 4000 * 4000), int(y // 4000 * 4000)
+    out = terrain.copernicus_raster(x, y, 4000, 10)
+    assert out.shape == (400, 400) and not np.isnan(out).any()
+    lon_c, lat_c = terrain.TO_LL.transform(x + 2000, y + 2000)
+    assert abs(out[200, 200] - lat_c * 10) < 0.02
+    assert out[0, 200] > out[-1, 200]   # north row is further north

@@ -1,6 +1,9 @@
 """Metric terrain analysis. Rasterio supplies GDAL-backed elevation IO.
 
-No synthetic terrain fallback: absent elevations propagate as unknown.
+No synthetic terrain fallback: absent elevations propagate as unknown. Beyond Kartverket's
+coverage (it reaches ~55 km into Sweden, to about 13°E) cells are filled from the open
+Copernicus GLO-30 DEM — a ~30 m *surface* model, so forest canopy is included — and flagged
+as coarse so callers can disclose the lower resolution rather than present it as 10 m terrain.
 """
 from __future__ import annotations
 
@@ -17,14 +20,19 @@ import os
 import httpx
 import numpy as np
 import rasterio
+import rasterio.errors
 from astral import Observer
 from astral.sun import azimuth, elevation
 from pyproj import Transformer, Proj
 from rasterio.io import MemoryFile
+from rasterio.transform import from_origin
+from rasterio.warp import Resampling, reproject
+from rasterio.windows import from_bounds
 from zoneinfo import ZoneInfo
 
 CACHE = Path(os.getenv('RANDO_CACHE', '.cache/terrain'))
 SOURCE = 'https://hoydedata.no/arcgis/rest/services/NHM_DTM_25833/ImageServer'
+COPERNICUS = 'https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_{lat}_00_{lon}_00_DEM/Copernicus_DSM_COG_10_{lat}_00_{lon}_00_DEM.tif'
 TO_UTM = Transformer.from_crs(4326, 25833, always_xy=True)
 TO_LL = Transformer.from_crs(25833, 4326, always_xy=True)
 
@@ -70,6 +78,7 @@ class Raster:
     west: float
     north: float
     resolution: float
+    coarse: np.ndarray | None = None   # cells filled from the ~30 m Copernicus surface model
 
     def sample(self, x, y):
         x, y = np.broadcast_arrays(x, y)
@@ -114,7 +123,57 @@ def fetch_raster(west: int, south: int, size: int, resolution: int) -> Raster:
         with rasterio.open(path) as src:
             z = src.read(1, masked=True).astype('float32').filled(np.nan)
             z[(z < -500) | (z > 9000)] = np.nan
-            return Raster(z, src.bounds.left, src.bounds.top, resolution)
+            raster = Raster(z, src.bounds.left, src.bounds.top, resolution)
+    if np.isnan(z).any():   # Kartverket returns sea as 0, so NaN means outside its coverage
+        fill = copernicus_raster(west, south, size, resolution)
+        if fill is not None:
+            coarse = np.isnan(z) & np.isfinite(fill)
+            if coarse.any():
+                raster.z = np.where(coarse, fill, z)
+                raster.coarse = coarse
+    return raster
+
+
+def copernicus_raster(west: int, south: int, size: int, resolution: int):
+    """The Copernicus GLO-30 surface model warped onto the UTM33 tile; None when unavailable."""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(f'{COPERNICUS}:{west}:{south}:{size}:{resolution}:v2'.encode()).hexdigest()[:24]
+    path = CACHE / f'{key}.tif'
+    n = size // resolution
+    dst_transform = from_origin(west, south + size, resolution, resolution)
+    with LOCK:
+        if not path.exists():
+            if os.getenv('RANDO_OFFLINE') == '1':
+                return None
+            lon0, lat0, lon1, lat1 = geo_bbox(west, south, west + size, south + size)
+            out = np.full((n, n), np.nan, dtype='float32')
+            try:
+                for lat in range(int(np.floor(lat0)), int(np.ceil(lat1))):
+                    for lon in range(int(np.floor(lon0)), int(np.ceil(lon1))):
+                        url = COPERNICUS.format(lat=f'N{lat:02d}' if lat >= 0 else f'S{-lat:02d}', lon=f'E{lon:03d}' if lon >= 0 else f'W{-lon:03d}')
+                        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR'), rasterio.open(url) as src:
+                            window = from_bounds(max(lon0, lon) - 0.01, max(lat0, lat) - 0.01, min(lon1, lon + 1) + 0.01, min(lat1, lat + 1) + 0.01, src.transform)
+                            # The COGs declare no nodata; use an explicit sentinel for the boundless fill.
+                            nodata = src.nodata if src.nodata is not None else -32767.0
+                            part = src.read(1, window=window, boundless=True, fill_value=nodata)
+                            piece = np.full((n, n), np.nan, dtype='float32')
+                            reproject(part, piece, src_transform=src.window_transform(window), src_crs=src.crs, src_nodata=nodata,
+                                      dst_transform=dst_transform, dst_crs='EPSG:25833', dst_nodata=np.nan, resampling=Resampling.bilinear)
+                            piece[(piece < -500) | (piece > 9000)] = np.nan
+                            out = np.where(np.isnan(out), piece, out)
+            except (rasterio.errors.RasterioIOError, httpx.HTTPError) as exc:
+                import logging
+                logging.getLogger('rando.terrain').warning('Copernicus DEM unavailable for %s,%s: %s', west, south, exc)
+                return None
+            tmp = path.with_name(f'{path.stem}.{os.getpid()}.tmp')
+            with rasterio.open(tmp, 'w', driver='GTiff', width=n, height=n, count=1, dtype='float32', crs='EPSG:25833', transform=dst_transform, nodata=np.nan) as dst:
+                dst.write(out, 1)
+            try:
+                tmp.replace(path)
+            except FileNotFoundError:
+                tmp.unlink(missing_ok=True)
+        with rasterio.open(path) as src:
+            return src.read(1).astype('float32')
 
 
 def horizon(raster: Raster, x, y, heights, bearing, distances):

@@ -116,6 +116,8 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
             continue
         sid = f'{prefix}s{len(summits)}'
         summits.append(dict(id=sid, cell=(int(pr), int(pc)), lonlat=[round(v, 5) for v in TO_LL.transform(W + pc * 10 + 5, mosaic.north - pr * 10 - 5)], elevation=finite(z[pr, pc])))
+        if mosaic.coarse is not None and mosaic.coarse[pr, pc]:
+            summits[-1]['coarse'] = True   # summit sits on ~30 m Copernicus surface data, not 10 m Kartverket terrain
         for run in run_candidates(pr, pc, z, band_len, counted, target, ok, slope, aspect, forest):
             dr, dc = np.divmod(run['cells'], z.shape[1])
             # Merge with an existing run whose bottom is within 100 m and top within 200 m.
@@ -124,6 +126,8 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
                 twin['summits'].append(sid); twin['top_cells'][sid] = (int(dr[0]), int(dc[0])); continue
             rid = f'{prefix}r{len(runs)}'
             entry = {k: v for k, v in run.items() if k not in ('cells', 'end')}
+            if mosaic.coarse is not None and mosaic.coarse[dr, dc].any():
+                entry['coarse'] = True
             entry.update(id=rid, summits=[sid], top_cell=(int(dr[0]), int(dc[0])), top_cells={sid: (int(dr[0]), int(dc[0]))}, bottom_cell=(int(dr[-1]), int(dc[-1])),
                          top=[round(v, 5) for v in TO_LL.transform(W + dc[0] * 10 + 5, mosaic.north - dr[0] * 10 - 5)],
                          bottom=[round(v, 5) for v in TO_LL.transform(W + dc[-1] * 10 + 5, mosaic.north - dr[-1] * 10 - 5)],
@@ -170,4 +174,4 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
         del r['top_cell'], r['bottom_cell'], r['top_cells']
     for p in parkings:
         del p['cell']
-    return dict(parkings=parkings, summits=summits, runs=runs, edges=edges, tiles_missing=mosaic.tiles_missing, water=water is not None, runout=runout is not None)
+    return dict(parkings=parkings, summits=summits, runs=runs, edges=edges, tiles_missing=mosaic.tiles_missing, coarse_share=round(mosaic.coarse_cells / z.size, 4), water=water is not None, runout=runout is not None)

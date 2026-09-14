@@ -36,6 +36,11 @@ class Mosaic:
     west: int
     south: int
     tiles_missing: int
+    coarse: np.ndarray | None = None   # cells filled from the ~30 m Copernicus surface model (beyond Kartverket)
+
+    @property
+    def coarse_cells(self):
+        return 0 if self.coarse is None else int(self.coarse.sum())
 
     @property
     def north(self):
@@ -46,7 +51,7 @@ def build_mosaic(west: int, south: int, east: int, north: int) -> Mosaic:
     """Paste the inner 400x400 of each 4 km tile; missing tiles stay NaN (never synthetic)."""
     rows, cols = (north - south) // 10, (east - west) // 10
     z = np.full((rows, cols), np.nan, dtype='float32')
-    missing = 0
+    missing, coarse = 0, None
     for ty in range(south, north, 4000):
         for tx in range(west, east, 4000):
             try:
@@ -57,7 +62,11 @@ def build_mosaic(west: int, south: int, east: int, north: int) -> Mosaic:
                 continue
             r0, c0 = (north - (ty + 4000)) // 10, (tx - west) // 10
             z[r0:r0 + 400, c0:c0 + 400] = tile.z[10:-10, 10:-10]
-    return Mosaic(z, west, south, missing)
+            if tile.coarse is not None:
+                if coarse is None:
+                    coarse = np.zeros(z.shape, dtype=bool)
+                coarse[r0:r0 + 400, c0:c0 + 400] = tile.coarse[10:-10, 10:-10]
+    return Mosaic(z, west, south, missing, coarse)
 
 
 def fall_line_drop(z, ok, counted):

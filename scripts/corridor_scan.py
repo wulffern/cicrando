@@ -8,7 +8,7 @@ from backend.regions import Corridor
 TRONDHEIM = (10.3951, 63.4305)
 LEGS = [
     [TRONDHEIM, (9.6910, 62.5940), (9.5492, 62.6940), (8.5600, 62.6780), (8.9700, 62.9760), TRONDHEIM],   # Oppdal – Skarvatnet – Sunndalsøra – Surnadal loop
-    [TRONDHEIM, (11.7480, 63.4160), (11.9500, 63.4500)],                                                   # E14 to Meråker / Teveldal
+    [TRONDHEIM, (11.7480, 63.4160), (12.1000, 63.3200), (13.0800, 63.4000)],                               # E14 to Meråker – Storlien – Åre (Sweden: Kartverket DTM to ~13°E, Copernicus beyond)
     [TRONDHEIM, (11.4950, 64.0150), (12.3800, 64.2460), (12.3100, 64.4620)],                               # E6 north: Steinkjer – Snåsa – Grong
 ]
 if __name__ == '__main__':

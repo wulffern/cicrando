@@ -74,6 +74,24 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    block's padded window yet be missing from the block that routes to its nearest summits.
    `terrain.geo_bbox` now encloses all four corners (access cache bumped to v2; `roads()` too).
    Per-summit option order is now: no skins back on first, then shortest day, run length last.
+
+## Sweden (2026-09-15)
+
+- Kartverket's NHM DTM already extends ~55 km into Sweden (real 10 m data at Storlien and
+  Sylarna, to about 13.0°E); tiles beyond come back all-NaN. Sea comes back as 0, so NaN
+  reliably means "outside coverage".
+- Lantmäteriet "Markhöjdmodell Nedladdning grid 1+": CC BY 4.0, 1 m COGs in SWEREF99 TM
+  (= UTM 33 grid), public STAC at `https://api.lantmateriet.se/stac-hojd/v1`, but the data
+  files need a free GeoTorget account (HTTP Basic). Not wired in; would be the upgrade path.
+- Implemented: `terrain.copernicus_raster` warps the open Copernicus GLO-30 DEM (public S3
+  COGs, EPSG:4326, ~28×31 m here, a *surface* model) onto the 10 m UTM33 tile and
+  `fetch_raster` fills only NaN cells from it, flagging them `Raster.coarse`. Validated against
+  Kartverket where both exist (Sylarna tile): elevation RMSE 4.1 m, 20–30° band share 10.0 % vs
+  10.7 %, per-cell band agreement 0.55 — statistics match, small cliff bands are smoothed.
+  Summits/runs on filled cells carry `coarse: true`; the planner shows a "~30 m terrain" badge.
+- E14 corridor leg extended Meråker – Storlien – Åre. Forest/water (AR5) and runout (NVE) masks
+  stop at the border; Swedish lakes are therefore flat, unmarked, routable ground. Map tiles
+  (Kartverket topo) also stop near the border — Lantmäteriet topowebb or OSM tiles are the fix.
 1. Choose date and outing window; scrub a map time slider.
 2. Set editable minimum/maximum slope and aspect. South and north presets each span ±45° by default.
 3. Choose seek sunlight, seek shade, or aspect-only terrain matching. Display potential direct sunlight separately from forecast cloud cover.
