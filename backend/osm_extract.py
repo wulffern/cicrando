@@ -44,7 +44,7 @@ def build_index(pbf: Path, name: str, out_dir: Path = OSM_DIR):
             if not pts:
                 return
             if t.get('amenity') == 'parking':
-                parkings.append(dict(type='way', id=w.id, geometry=[{'lat': y, 'lon': x} for x, y in pts],
+                parkings.append(dict(type='way', id=w.id,   # outline dropped: parking_spots uses the centroid
                                      center={'lat': sum(p[1] for p in pts) / len(pts), 'lon': sum(p[0] for p in pts) / len(pts)},
                                      tags={x.k: x.v for x in t if x.k in PARKING_TAGS}))
             elif hw and (hw in ROAD_CLASSES or any(k in t for k in WINTER_TAGS)):
@@ -55,8 +55,12 @@ def build_index(pbf: Path, name: str, out_dir: Path = OSM_DIR):
 
     Collector().apply_file(str(pbf), locations=True)
     out_dir.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(out_dir / f'{name}-roads.npz', lon=np.array(lon, 'float32'), lat=np.array(lat, 'float32'),
-                        cls=np.array(cls, 'uint8'), closed=np.array(closed, bool), way=np.array(way, 'int64'))
+    way_ids, way_code = np.unique(np.array(way, 'int64'), return_inverse=True)
+    lat = np.array(lat, 'float32'); order = np.argsort(lat, kind='stable')   # sorted by latitude: queries touch one band
+    arrays = dict(lat=lat[order], lon=np.array(lon, 'float32')[order], cls=np.array(cls, 'uint8')[order],
+                  closed=np.array(closed, bool)[order], way=way_code.astype('int32')[order], way_ids=way_ids)
+    for key, arr in arrays.items():
+        np.save(out_dir / f'{name}-roads-{key}.npy', arr)   # uncompressed so they can be memory-mapped
     with gzip.open(out_dir / f'{name}-parkings.json.gz', 'wt') as f:
         json.dump(parkings, f)
     logger.info('%s: %d parkings, %d road points', name, len(parkings), len(lon))
@@ -66,19 +70,23 @@ def build_index(pbf: Path, name: str, out_dir: Path = OSM_DIR):
 _INDEX = {}
 
 
+ROAD_KEYS = ('lat', 'lon', 'cls', 'closed', 'way', 'way_ids')
+
+
 def _load(name, out_dir):
     if name not in _INDEX:
-        roads = np.load(out_dir / f'{name}-roads.npz')
+        roads = {k: np.load(out_dir / f'{name}-roads-{k}.npy', mmap_mode='r') for k in ROAD_KEYS}
         with gzip.open(out_dir / f'{name}-parkings.json.gz', 'rt') as f:
             parkings = json.load(f)
         p_lon = np.array([p['lon'] if 'lon' in p else p['center']['lon'] for p in parkings])
         p_lat = np.array([p['lat'] if 'lat' in p else p['center']['lat'] for p in parkings])
-        _INDEX[name] = dict(roads={k: roads[k] for k in roads.files}, parkings=parkings, p_lon=p_lon, p_lat=p_lat)
+        _INDEX[name] = dict(roads=roads, parkings=parkings, p_lon=p_lon, p_lat=p_lat)
     return _INDEX[name]
 
 
 def available(out_dir: Path = OSM_DIR):
-    return sorted(p.name[:-len('-roads.npz')] for p in out_dir.glob('*-roads.npz') if (out_dir / f'{p.name[:-len("-roads.npz")]}-parkings.json.gz').exists())
+    return sorted(p.name[:-len('-parkings.json.gz')] for p in out_dir.glob('*-parkings.json.gz')
+                  if all((out_dir / f'{p.name[:-len("-parkings.json.gz")]}-roads-{k}.npy').exists() for k in ROAD_KEYS))
 
 
 def access(west, south, east, north, out_dir: Path = OSM_DIR):
@@ -93,17 +101,19 @@ def access(west, south, east, north, out_dir: Path = OSM_DIR):
         hit = (idx['p_lon'] >= lon0) & (idx['p_lon'] <= lon1) & (idx['p_lat'] >= lat0) & (idx['p_lat'] <= lat1)
         elements.extend(idx['parkings'][i] for i in np.flatnonzero(hit))
         r = idx['roads']
-        hit = (r['lon'] >= lon0) & (r['lon'] <= lon1) & (r['lat'] >= lat0) & (r['lat'] <= lat1)
-        sel = np.flatnonzero(hit)
+        a = int(np.searchsorted(r['lat'], np.float32(lat0), side='left'))
+        b = int(np.searchsorted(r['lat'], np.float32(lat1), side='right'))
+        lon, lat, cls, closed, way = (np.asarray(r[k][a:b]) for k in ('lon', 'lat', 'cls', 'closed', 'way'))
+        sel = np.flatnonzero((lon >= lon0) & (lon <= lon1))
         if not len(sel):
             continue
-        order = sel[np.argsort(r['way'][sel], kind='stable')]
-        ways, starts = np.unique(r['way'][order], return_index=True)
-        for wid, chunk in zip(ways, np.split(order, starts[1:])):
-            code = int(r['cls'][chunk[0]])
+        order = sel[np.argsort(way[sel], kind='stable')]
+        ways, starts = np.unique(way[order], return_index=True)
+        for wcode, chunk in zip(ways, np.split(order, starts[1:])):
+            code = int(cls[chunk[0]])
             tags = {'highway': ROAD_CLASSES[code] if code < len(ROAD_CLASSES) else 'path'}
-            if r['closed'][chunk[0]]:
+            if closed[chunk[0]]:
                 tags['winter_service'] = 'no'
-            elements.append(dict(type='way', id=int(wid), tags=tags,
-                                 geometry=[{'lat': float(r['lat'][i]), 'lon': float(r['lon'][i])} for i in chunk]))
+            elements.append(dict(type='way', id=int(r['way_ids'][wcode]), tags=tags,
+                                 geometry=[{'lat': float(lat[i]), 'lon': float(lon[i])} for i in chunk]))
     return {'elements': elements}
