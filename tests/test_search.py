@@ -49,3 +49,21 @@ def test_forest_tile_decodes_ar5_colours(monkeypatch, tmp_path):
     assert (tile[:200, :] == 2).all() and (tile[200:, :200] == 1).all() and (tile[200:, 200:] == 0).all()
     grid = s.forest_mask(0, 0, 4000, 4000, (400, 400))
     assert grid is not None and (grid == tile).all()
+
+
+def test_runout_tile_decodes_nve_colours(monkeypatch, tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    img = np.zeros((1000, 1000, 4), dtype='uint8')
+    img[:500, :, :3] = (154, 177, 230); img[:500, :, 3] = 255  # modelled runout, north half
+    buf = BytesIO(); Image.fromarray(img).save(buf, format='PNG')
+    class R:
+        content = buf.getvalue(); headers = {'content-type': 'image/png'}
+        def raise_for_status(self): pass
+    monkeypatch.setattr(s.httpx, 'get', lambda *a, **k: R())
+    monkeypatch.setattr(s, 'CACHE', tmp_path)
+    tile = s.runout_tile(0, 0)
+    assert tile.shape == (400, 400)
+    assert (tile[:200, :] == 1).all() and (tile[200:, :] == 0).all()
+    grid = s.runout_mask(0, 0, 4000, 4000, (400, 400))
+    assert grid is not None and (grid == tile).all()

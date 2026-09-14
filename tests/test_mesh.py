@@ -3,7 +3,7 @@ import numpy as np
 from skimage.graph import MCP_Geometric
 
 from backend import mesh
-from backend.toppturs import ascent_costs
+from backend.toppturs import ascent_costs, path_stats
 
 
 def terrain():
@@ -179,3 +179,22 @@ def test_published_line_retains_obstacle_detour_after_coordinate_rounding():
         visited.extend(np.rint(np.linspace(a, b, 101)).astype(int).tolist())
     assert [0, 4] not in visited
     assert set(map(tuple, visited)) == set(map(tuple, path))
+
+
+def test_runout_raises_cost_but_stays_passable():
+    slope = np.full((5, 5), 10.0)
+    runout = np.zeros((5, 5), dtype='uint8'); runout[:, 2] = 1
+    plain = ascent_costs(slope, 35)
+    with_runout = ascent_costs(slope, 35, runout=runout)
+    assert np.isfinite(with_runout[:, 2]).all()
+    np.testing.assert_allclose(with_runout[:, 2], plain[:, 2] * 1.5)
+    np.testing.assert_allclose(with_runout[:, 0], plain[:, 0])
+
+
+def test_path_stats_reports_runout_length():
+    z = np.zeros((1, 5)); slope = np.zeros((1, 5))
+    rows, cols = np.zeros(5, dtype=int), np.arange(5)
+    runout = np.array([[0, 0, 1, 1, 0]], dtype='uint8')
+    stats = path_stats(rows, cols, z, slope, None, 4, 400, runout=runout)
+    assert stats['runout_m'] == 20
+    assert path_stats(rows, cols, z, slope, None, 4, 400)['runout_m'] is None

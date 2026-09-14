@@ -13,7 +13,7 @@ import numpy as np
 from scipy import ndimage
 
 from .loops import parking_spots, run_candidates
-from .search import build_mosaic, fall_line_drop, forest_mask, water_mask
+from .search import build_mosaic, fall_line_drop, forest_mask, runout_mask, water_mask
 from .terrain import TO_LL, derivatives, finite
 from .toppturs import ascent_costs, find_peaks, path_stats
 from . import mesh
@@ -42,8 +42,8 @@ def line(cells, W, north, step):
 class Router:
     """Least-cost legs on the terrain-adaptive mesh (see backend.mesh), one Dijkstra per source."""
 
-    def __init__(self, costs, slope, refine_deg=15.0, endpoints=(), water=None):
-        self.costs, self.slope, self.refine_deg, self.water = costs, slope, refine_deg, water
+    def __init__(self, costs, slope, refine_deg=15.0, endpoints=(), water=None, runout=None):
+        self.costs, self.slope, self.refine_deg, self.water, self.runout = costs, slope, refine_deg, water, runout
         self.endpoints = set(map(tuple, endpoints))
         self._build()
 
@@ -81,7 +81,7 @@ class Router:
             if not np.isfinite(dist[t]):
                 continue
             path = mesh.path_cells(pred, self.crow, self.ccol, self.size, t, (sr, sc), target_cells[i])
-            stats = path_stats(path[:, 0], path[:, 1], z, slope, forest, horizontal, vertical, self.water)
+            stats = path_stats(path[:, 0], path[:, 1], z, slope, forest, horizontal, vertical, self.water, self.runout)
             stats['line'] = line(path, W, north, 8)
             out.append((i, stats))
         return out
@@ -93,10 +93,11 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
     slope, aspect = derivatives(z, 10)
     forest = forest_mask(W, S, E, N, z.shape)
     water = water_mask(W, S, E, N, z.shape)
+    runout = runout_mask(W, S, E, N, z.shape)
     spots = parking_spots(west, south, east, north, pad=margin)
     if spots is None:
         raise RuntimeError('Parking/road data unavailable')
-    costs = ascent_costs(slope, max_ascent, lower, water)
+    costs = ascent_costs(slope, max_ascent, lower, water, runout)
     smooth = ndimage.uniform_filter(np.nan_to_num(slope, nan=90.0), 3)
     # A run may cross short sections up to `descent_max` (reported), but never a raw ≥ descent_max cell.
     ok = (smooth < descent_max) & (np.nan_to_num(slope, nan=90.0) < descent_max) & (smooth > 3) & np.isfinite(slope)
@@ -134,7 +135,7 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
     del smooth, ok, counted, band_len, target, aspect, _
     endpoints = ([s['cell'] for s in summits] + [p['cell'] for p in parkings]
                  + [r['bottom_cell'] for r in runs] + [c for r in runs for c in r['top_cells'].values()])
-    router = Router(costs, slope, endpoints=endpoints, water=water)
+    router = Router(costs, slope, endpoints=endpoints, water=water, runout=runout)
     # Connector from each summit to the top of each of its runs: a least-cost leg, never a straight line.
     for summit in summits:
         mine = [(i, r['top_cells'][summit['id']]) for i, r in enumerate(runs) if summit['id'] in r['summits']]
@@ -166,4 +167,4 @@ def build(west, south, east, north, prefix, lower=20, upper=30, max_ascent=35, h
         del r['top_cell'], r['bottom_cell'], r['top_cells']
     for p in parkings:
         del p['cell']
-    return dict(parkings=parkings, summits=summits, runs=runs, edges=edges, tiles_missing=mosaic.tiles_missing, water=water is not None)
+    return dict(parkings=parkings, summits=summits, runs=runs, edges=edges, tiles_missing=mosaic.tiles_missing, water=water is not None, runout=runout is not None)

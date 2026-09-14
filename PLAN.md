@@ -44,7 +44,11 @@ Verify service access, numerical output, local coverage, attribution/caching ter
    (≤5 km, ≤250 m climb). The static page chains legs by shortest time — loops and multi-run days —
    and exports GPX. Skarvatnet graph: 212 parkings (19 plowed, 193 unknown), 476 summits, 344 runs,
    4,308 legs. Limits: NVDB winter classes are sparse here, so most seter roads stay "unknown";
-   legs ignore NVE runout zones, rivers, cornices and private land.
+   legs ignore rivers, cornices and private land. Legs now steer around NVE modelled avalanche
+   runout zones (`backend/search.py::runout_mask`, the "lo"/long-distance layer of NVE's
+   Bratthet_med_utlop service, decoded like the existing AR5 water mask) at 1.5x cost — advisory,
+   not impassable, since it is a model output rather than a checked hazard; `runout_m` on each leg
+   reports the crossed distance.
 1. Choose date and outing window; scrub a map time slider.
 2. Set editable minimum/maximum slope and aspect. South and north presets each span ±45° by default.
 3. Choose seek sunlight, seek shade, or aspect-only terrain matching. Display potential direct sunlight separately from forecast cloud cover.

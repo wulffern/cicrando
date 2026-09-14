@@ -286,6 +286,58 @@ def _ar5_tile(tx, ty, layer, colours, prefix):
     return classes
 
 
+NVE_BRATTHET = 'https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_med_utlop_2024/MapServer/export'
+# "runout_encoded_lo" (long/most conservative modelled runout distance) swatch colour.
+RUNOUT_COLOUR = (154, 177, 230)
+
+
+def runout_tile(tx, ty):
+    """NVE modelled avalanche runout ('lo', most conservative) for one 4 km tile at 10 m: 0/1."""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    path = CACHE / f'nve_runout_{tx}_{ty}_v1.png'
+    if not path.exists():
+        if os.getenv('RANDO_OFFLINE') == '1':
+            raise ValueError('NVE runout tile not cached and RANDO_OFFLINE=1')
+        params = dict(bbox=f'{tx},{ty},{tx+4000},{ty+4000}', bboxSR=25833, imageSR=25833, size='1000,1000',
+                      format='png32', transparent='true', layers='show:4', f='image')
+        response = httpx.get(NVE_BRATTHET, params=params, timeout=90, headers={'User-Agent': 'cicrando/0.1 terrain planner'})
+        response.raise_for_status()
+        if not response.headers.get('content-type', '').startswith('image/png'):
+            raise ValueError('NVE runout service returned no image')
+        tmp = path.with_name(f'{path.stem}.{os.getpid()}.tmp')
+        tmp.write_bytes(response.content)
+        try:
+            tmp.replace(path)
+        except FileNotFoundError:
+            tmp.unlink(missing_ok=True)
+    try:
+        rgba = np.array(Image.open(path).convert('RGBA').resize((400, 400), Image.NEAREST))
+    except (OSError, SyntaxError):
+        path.unlink(missing_ok=True)
+        logger.warning('Corrupt NVE runout tile %s_%s replaced', tx, ty)
+        return runout_tile(tx, ty)
+    return ((rgba[..., 3] > 0) & np.all(rgba[..., :3] == RUNOUT_COLOUR, axis=-1)).astype('uint8')
+
+
+def runout_mask(west, south, east, north, shape):
+    """Modelled avalanche runout grid (1 = inside the conservative runout zone) for the extent.
+
+    Advisory only, not a stability assessment: coverage is a model output, not verified terrain.
+    None when the NVE service is unavailable.
+    """
+    out = np.zeros(shape, dtype='uint8')
+    for ty in range(south, north, 4000):
+        for tx in range(west, east, 4000):
+            try:
+                tile = runout_tile(tx, ty)
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning('NVE runout tile %s_%s unavailable: %s', tx, ty, exc)
+                return None
+            r0, c0 = (north - (ty + 4000)) // 10, (tx - west) // 10
+            out[r0:r0 + 400, c0:c0 + 400] = tile
+    return out
+
+
 def forest_mask(west, south, east, north, shape):
     """Tree-species class grid for the search extent; None when NIBIO AR5 is unavailable."""
     out = np.zeros(shape, dtype='uint8')
