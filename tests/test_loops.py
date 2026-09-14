@@ -11,6 +11,7 @@ def test_parking_ways_use_geometry_centroid(monkeypatch, tmp_path):
     ]}
     monkeypatch.setattr(loops, 'osm_access', lambda *a, **k: data)
     monkeypatch.setattr(loops, 'nvdb_unplowed', lambda *a, **k: loops.np.zeros((0, 2)))
+    monkeypatch.setattr(loops, 'nvdb_parkings', lambda *a, **k: [])
     spots = loops.parking_spots(190000, 6960000, 194000, 6964000, pad=0)
     names = {s['name']: s for s in spots}
     assert set(names) == {'Storli', 'Bårdsgarden'}
@@ -31,6 +32,7 @@ def test_town_car_parks_are_not_trailheads(monkeypatch):
     ]}
     monkeypatch.setattr(loops, 'osm_access', lambda *a, **k: data)
     monkeypatch.setattr(loops, 'nvdb_unplowed', lambda *a, **k: loops.np.zeros((0, 2)))
+    monkeypatch.setattr(loops, 'nvdb_parkings', lambda *a, **k: [])
     spots = loops.parking_spots(190000, 6960000, 194000, 6964000, pad=0)
     assert [s['name'] for s in spots] == ['Trailhead']
 

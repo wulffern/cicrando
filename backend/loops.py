@@ -31,10 +31,16 @@ ACCESS_CHUNK = 13000   # metres; road-with-geometry queries beyond this size tim
 
 
 def osm_access(west, south, east, north):
-    """Parking spots and winter-tagged roads for a UTM bbox, fetched in cached chunks.
+    """Parking spots and winter-tagged roads for a UTM bbox.
 
-    Returns {'elements': [...]} or None only when no chunk could be fetched or recovered from cache.
+    A local Geofabrik extract index (backend.osm_extract, scripts/osm_index.py) answers directly;
+    otherwise Overpass is queried in cached chunks. Returns {'elements': [...]} or None only when
+    no chunk could be fetched or recovered from cache.
     """
+    from . import osm_extract
+    local = osm_extract.access(west, south, east, north)
+    if local is not None:
+        return local
     elements, seen, got_any = [], set(), False
     for cy in range(south, north, ACCESS_CHUNK):
         for cx in range(west, east, ACCESS_CHUNK):
@@ -75,6 +81,55 @@ def osm_access_chunk(west, south, east, north):
     return data
 
 
+def _wkt_points(wkt):
+    pts = []
+    for token in wkt.replace('(', ' ').replace(')', ' ').split(','):
+        nums = token.split()
+        if len(nums) >= 2:
+            try:
+                pts.append((float(nums[0]), float(nums[1])))
+            except ValueError:
+                pass
+    return pts
+
+
+def _nvdb_objects(kind, west, south, east, north):
+    url = f'{NVDB}/{kind}?kartutsnitt={west},{south},{east},{north}&inkluder=egenskaper,geometri&srid=5973&antall=1000'
+    for _ in range(60):
+        d = httpx.get(url, headers={'Accept': 'application/json', 'X-Client': 'cicrando'}, timeout=60).json()
+        yield from d.get('objekter', [])
+        nxt = d.get('metadata', {}).get('neste')
+        if not nxt or not d.get('objekter'):
+            break
+        url = nxt['href']
+
+
+def nvdb_parkings(west, south, east, north):
+    """NVDB 43 'Parkeringsområde' (official parking areas) as spots; cached; empty when unavailable."""
+    from .search import CACHE, OFFLINE
+    cache = CACHE / f'nvdb43_{west}_{south}_{east}_{north}_v1.json'
+    if cache.exists():
+        return json.loads(cache.read_text())
+    if OFFLINE:
+        return []
+    spots = []
+    try:
+        for o in _nvdb_objects(43, west, south, east, north):
+            props = {e['navn']: e.get('verdi') for e in o.get('egenskaper', [])}
+            pts = _wkt_points(o.get('geometri', {}).get('wkt', ''))
+            if not pts:
+                continue
+            x, y = float(np.mean([p[0] for p in pts])), float(np.mean([p[1] for p in pts]))
+            lon, lat = TO_LL.transform(x, y)
+            tags = {'source': 'nvdb', 'use': props.get('Bruksområde'), 'capacity': props.get('Antall parkeringsplasser små kjt.'), 'owner': props.get('Eier')}
+            spots.append(dict(lon=float(lon), lat=float(lat), name=props.get('Navn'), tags={k: v for k, v in tags.items() if v is not None}))
+        CACHE.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(spots))
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning('NVDB parkings unavailable: %s', exc)
+    return spots
+
+
 def nvdb_unplowed(west, south, east, north):
     """NVDB 810 segments with 'Ingen vinterdrift' as UTM point arrays; cached; empty when unavailable."""
     from .search import CACHE, OFFLINE
@@ -93,14 +148,7 @@ def nvdb_unplowed(west, south, east, north):
             for o in d.get('objekter', []):
                 klass = next((e.get('verdi') for e in o.get('egenskaper', []) if e['navn'] == 'Vinterdriftsklasse'), None)
                 if klass == 'Ingen vinterdrift':
-                    wkt = o.get('geometri', {}).get('wkt', '')
-                    for token in wkt.replace('(', ' ').replace(')', ' ').replace(',', ' , ').split(','):
-                        nums = token.split()
-                        if len(nums) >= 2:
-                            try:
-                                pts.append((float(nums[0]), float(nums[1])))
-                            except ValueError:
-                                pass
+                    pts.extend(_wkt_points(o.get('geometri', {}).get('wkt', '')))
             nxt = d.get('metadata', {}).get('neste')
             if not nxt or not d.get('objekter'):
                 break
@@ -133,6 +181,12 @@ def parking_spots(west, south, east, north, pad=5000):
             closed = t.get('winter_service') == 'no' or t.get('snowplowing') == 'no' or t.get('seasonal') in ('summer', 'yes')
             for n in geom:
                 roads.append((n['lon'], n['lat'], t['highway'], closed))
+    # Official NVDB parking areas complement OSM; skip those OSM already has within 60 m.
+    osm_xy = np.array([TO_UTM.transform(s['lon'], s['lat']) for s in spots]) if spots else np.zeros((0, 2))
+    for s in nvdb_parkings(west - pad, south - pad, east + pad, north + pad):
+        x, y = TO_UTM.transform(s['lon'], s['lat'])
+        if not len(osm_xy) or np.hypot(osm_xy[:, 0] - x, osm_xy[:, 1] - y).min() > 60:
+            spots.append(s)
     if not spots:
         return []
     rx, ry = TO_UTM.transform(np.array([r[0] for r in roads]), np.array([r[1] for r in roads])) if roads else (np.zeros(0), np.zeros(0))
