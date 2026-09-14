@@ -141,10 +141,11 @@ function loopsFor(sid){ // (parking, run) combos, best first; back leg optional
    const dist=km(r.bottom,p.lonlat);
    const down={hours:ap.hours+r.band_length_m/8000,ap};
    out.push({p,r,up,back,down,ap,dist,total:up.hours+down.hours+(back?back.hours:0),score:r.band_length_m-(back?0.3*back.length_m+3*back.gain_m:600*dist)-40*up.hours-2*(r.over30_m||0)});}
-  // Fallback: ski the ascent line back down (always closes the loop).
-  if(!runs.length||!loopOnly){const share=up.share_band??null;if(share!==null&&up.length_m*share/100>=minRun&&(face==='all'||true)&&up.max_slope<=runMax){
+  // Fallback: ski the ascent line back down (always closes the loop); only when this parking has no real run.
+  const realHere=out.some(o=>o.p===p&&!o.r.synthetic);
+  if(!realHere){const share=up.share_band??null;if(share!==null&&up.length_m*share/100>=minRun&&face==='all'&&up.max_slope<=runMax){
    const r={id:'up:'+up.from+'>'+sid,band_length_m:Math.round(up.length_m*share/100),drop:up.gain_m,top_elevation:s.elevation,bottom_elevation:s.elevation-up.gain_m,mean_slope:null,max_slope:up.max_slope,steep_share:up.share_over_30,aspect:null,forest_share:up.forest_share,forest_type:null,start_offset_m:0,over30_m:Math.round(up.length_m*up.share_over_30/100),length_m:up.length_m,bottom:p.lonlat,synthetic:true};
-   out.push({p,r,up,back:null,down:{hours:up.length_m/8000,ap:null},ap:null,dist:0,total:up.hours+up.length_m/8000,score:r.band_length_m*0.5-40*up.hours});}}
+   out.push({p,r,up,back:null,down:{hours:up.length_m/8000,ap:null},ap:null,dist:0,total:up.hours+up.length_m/8000,score:Math.min(r.band_length_m,400)*0.5-60*up.hours-1000});}}
  }
  return out.sort((a,b)=>b.score-a.score);
 }

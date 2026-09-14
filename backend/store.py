@@ -17,10 +17,18 @@ def block_of(node_id: str) -> str:
 def save(graph: dict, path: Path):
     path = Path(path)
     g = json.loads(json.dumps(graph))  # deep copy; pops below must not touch the caller's object
+    def thin(line, step=2):
+        # Legs are sampled every 80 m at build; every second point (~160 m) is plenty for display and GPX.
+        if not line or len(line) <= 3:
+            return line
+        out = line[::step]
+        if out[-1] != line[-1]:
+            out.append(line[-1])
+        return [[round(x, 5), round(y, 5)] for x, y in out]
     lines = {}
     for e in g['edges']:
         blk = block_of(e['to'] if e['kind'] == 'skin' else e['from'])
-        lines.setdefault(blk, {})[f"{e['from']}>{e['to']}>{e['kind']}"] = e.pop('line', None)
+        lines.setdefault(blk, {})[f"{e['from']}>{e['to']}>{e['kind']}"] = thin(e.pop('line', None))
     for r in g['runs']:
         lines.setdefault(block_of(r['id']), {})[r['id']] = r.pop('line', None)
         for sid, a in (r.get('approach') or {}).items():
