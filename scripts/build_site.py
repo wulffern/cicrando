@@ -29,6 +29,49 @@ for src in sorted((root / 'data').glob('*toppturer*.json'), reverse=True):
     data.setdefault('origin_name', 'Skarvatnet' if abs(data['origin'][0] - 9.549) < 0.01 else None)
     (docs / 'data' / src.name).write_text(json.dumps(data, ensure_ascii=False))
     index.append(dict(file=src.name, title=f"{data.get('origin_name') or 'Origin'} · {data['generated'][:10]} · {len(data['tours'])} tours"))
+import numpy as np
+from backend.osm_extract import main_road_segments
+ROADS = main_road_segments(root / '.cache/osm')
+CAR_M = 300   # crossing the road right beside the parking is normal
+CELL = 0.02  # degrees; road segments are bucketed by every grid cell their bounding box touches
+GRID = {}
+if len(ROADS):
+    lo = np.floor(np.minimum(ROADS[:, :2], ROADS[:, 2:]) / CELL).astype(int)
+    hi = np.floor(np.maximum(ROADS[:, :2], ROADS[:, 2:]) / CELL).astype(int)
+    for i in range(len(ROADS)):
+        for cx in range(lo[i, 0], hi[i, 0] + 1):
+            for cy in range(lo[i, 1], hi[i, 1] + 1):
+                GRID.setdefault((cx, cy), []).append(i)
+
+
+def road_crossings(line, near_car=None):
+    """How many main-road segments a polyline properly crosses (touching an end does not count).
+    near_car='start'/'end': crossings within CAR_M of that end are ignored (the road beside the car park)."""
+    if not line or len(line) < 2:
+        return 0
+    a = np.asarray([p[:2] for p in line], float)
+    if near_car:
+        step = np.hypot(np.diff(a[:, 0]) * 111320 * np.cos(np.radians(a[:-1, 1])), np.diff(a[:, 1]) * 110540)
+        if near_car == 'end':
+            a, step = a[::-1], step[::-1]
+        keep = np.concatenate([[0], np.cumsum(step)]) > CAR_M   # points beyond CAR_M, plus the one before
+        first = max(int(np.argmax(keep)) - 1, 0) if keep.any() else len(a)
+        a = a[first:]
+        if len(a) < 2:
+            return 0
+    (x0, y0), (x1, y1) = np.floor(a.min(0) / CELL).astype(int), np.floor(a.max(0) / CELL).astype(int)
+    ids = {i for cx in range(x0, x1 + 1) for cy in range(y0, y1 + 1) for i in GRID.get((cx, cy), ())}
+    if not ids:
+        return 0
+    q = ROADS[sorted(ids)]
+    p0, p1 = a[:-1, None, :], a[1:, None, :]
+    q0, q1 = q[None, :, :2], q[None, :, 2:]
+    cross = lambda o, u, v: (u[..., 0] - o[..., 0]) * (v[..., 1] - o[..., 1]) - (u[..., 1] - o[..., 1]) * (v[..., 0] - o[..., 0])
+    d1, d2 = cross(q0, q1, p0), cross(q0, q1, p1)
+    d3, d4 = cross(p0, p1, q0), cross(p0, p1, q1)
+    return int(((d1 * d2 < 0) & (d3 * d4 < 0)).sum())
+
+
 graphs = []
 for src in sorted((root / 'data').glob('graph-*.json'), reverse=True):
     g = json.loads(src.read_text())
@@ -75,6 +118,14 @@ for src in sorted((root / 'data').glob('graph-*.json'), reverse=True):
                 hi = max(hi, pt[2])
                 drop = max(drop, hi - pt[2])
             e['drop_m'] = round(drop)
+    # Main-road crossings (motorway/trunk/primary, OSM) on every leg, so the viewer can avoid them.
+    if len(ROADS):
+        for e in g['edges']:
+            e['roads_x'] = road_crossings(lines.get(f"{e['from']}>{e['to']}>{e['kind']}"), 'start' if e['kind'] == 'skin' else 'end')
+        for r in g['runs']:
+            r['roads_x'] = road_crossings(lines.get(r['id']))
+            for sid, a in (r.get('approach') or {}).items():
+                a['roads_x'] = road_crossings(lines.get(f"{r['id']}>{sid}>approach"))
     # Drop fields the viewer never reads: the phone parses this whole file before showing anything.
     for e in g['edges']:
         for k in ('mean_slope', 'share_over_25', 'runout_m'):

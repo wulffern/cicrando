@@ -67,6 +67,38 @@ def build_index(pbf: Path, name: str, out_dir: Path = OSM_DIR):
     return len(parkings), len(lon)
 
 
+MAIN_ROADS = ('motorway', 'trunk', 'primary')
+
+
+def build_main_roads(pbf: Path, name: str, out_dir: Path = OSM_DIR):
+    """Main roads as ordered polylines (the road index above is latitude-sorted points, which cannot
+    say whether a line crosses a road): {name}-mainroads.json.gz, [[class, [[lon, lat], ...]], ...]."""
+    import osmium
+    wanted = osmium.filter.KeyFilter('highway')
+    ways = []
+    for w in osmium.FileProcessor(str(pbf)).with_locations().with_filter(wanted):
+        if w.is_way() and w.tags.get('highway') in MAIN_ROADS:
+            pts = [[round(n.lon, 6), round(n.lat, 6)] for n in w.nodes if n.location.valid()]
+            if len(pts) > 1:
+                ways.append([w.tags['highway'], pts])
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with gzip.open(out_dir / f'{name}-mainroads.json.gz', 'wt') as f:
+        json.dump(ways, f)
+    logger.info('%s: %d main road ways', name, len(ways))
+    return len(ways)
+
+
+def main_road_segments(out_dir: Path = OSM_DIR):
+    """Every main-road segment from every extract present, as an (n, 4) array lon0, lat0, lon1, lat1."""
+    segs = []
+    for f in sorted(out_dir.glob('*-mainroads.json.gz')):
+        with gzip.open(f, 'rt') as fh:
+            for _, pts in json.load(fh):
+                a = np.asarray(pts, float)
+                segs.append(np.hstack([a[:-1], a[1:]]))
+    return np.vstack(segs) if segs else np.zeros((0, 4))
+
+
 _INDEX = {}
 
 

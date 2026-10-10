@@ -102,6 +102,7 @@ select,input{font:inherit;font-size:15px;padding:6px 8px;border:1px solid var(--
     <label>Access<select id="f-access"><option value="open">Not closed</option><option value="plowed">Plowed only</option><option value="all">All</option></select></label>
     <label>Parking ≤ km<input id="f-park" type="number" value="6" step="1" min="1"></label>
     <label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0"><input id="f-nolake" type="checkbox" checked style="width:auto">Avoid lake crossings (ice unknown)</label>
+    <label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0"><input id="f-noroad" type="checkbox" checked style="width:auto">Avoid crossing main roads</label>
     <label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0"><input id="f-cov" type="checkbox" checked style="width:auto">Scanned blocks</label>
    </div>
    </details>
@@ -166,13 +167,13 @@ function accessOk(p){const a=$('f-access').value;return a==='all'||(a==='open'?p
 const RESKIN_M=15; // approach-to-run climb above this means skins go back on mid-descent
 const LAKE_M=200;   // longer lake crossings are hidden by default: ice is unknown
 function loopsFor(sid){ // (parking, run) combos, best first; back leg optional
- const out=[];const drive=+$('f-drive').value,slope=+$('f-slope').value,minRun=+$('f-run').value,maxKm=+$('f-park').value*1000,face=$('f-face').value,runMax=+$('f-runmax').value,loopOnly=$('f-loop').checked,continuousOnly=$('f-continuous').checked,noLake=$('f-nolake').checked,dropMax=+$('f-drop').value;
- const lakeOk=e=>!noLake||!e||(e.lake_m||0)<=LAKE_M;
+ const out=[];const drive=+$('f-drive').value,slope=+$('f-slope').value,minRun=+$('f-run').value,maxKm=+$('f-park').value*1000,face=$('f-face').value,runMax=+$('f-runmax').value,loopOnly=$('f-loop').checked,continuousOnly=$('f-continuous').checked,noLake=$('f-nolake').checked,dropMax=+$('f-drop').value,noRoad=$('f-noroad').checked;
+ const legOk=e=>(!noLake||!e||(e.lake_m||0)<=LAKE_M)&&(!noRoad||!e||!e.roads_x);
  const s=node[sid];
- for(const up of skinTo[sid]||[]){const p=node[up.from];if(!accessOk(p)||(p.drive_min??999)>drive||up.max_slope>slope||up.length_m>maxKm*1.6||!lakeOk(up)||(up.drop_m||0)>dropMax)continue;
+ for(const up of skinTo[sid]||[]){const p=node[up.from];if(!accessOk(p)||(p.drive_min??999)>drive||up.max_slope>slope||up.length_m>maxKm*1.6||!legOk(up)||(up.drop_m||0)>dropMax)continue;
   const runs=(runsOf[sid]||[]).filter(r=>r.band_length_m>=minRun&&(face==='all'||sector(r.aspect)===face)&&(r.max_slope??0)<=runMax&&r.approach&&r.approach[sid]);
-  for(const r of runs){const ap=r.approach[sid];const reskin=Math.round(ap.gain_m||0);if(continuousOnly&&reskin>RESKIN_M||!lakeOk(ap))continue;
-   const back=(walkFrom[r.id]||[]).find(e=>e.to===p.id&&e.max_slope<=slope&&lakeOk(e))||null;
+  for(const r of runs){const ap=r.approach[sid];const reskin=Math.round(ap.gain_m||0);if(continuousOnly&&reskin>RESKIN_M||!legOk(ap)||noRoad&&r.roads_x)continue;
+   const back=(walkFrom[r.id]||[]).find(e=>e.to===p.id&&e.max_slope<=slope&&legOk(e))||null;
    if(loopOnly&&!back)continue;
    const dist=km(r.bottom,p.lonlat);
    const down={hours:ap.hours+r.band_length_m/8000,ap};
@@ -215,7 +216,7 @@ function show(cur){
  const parks=[...new Map(L.map(l=>[l.p.id,l.p])).values()];$('o-park').innerHTML=parks.map(p=>`<option value="${p.id}" ${p.id===cur.p.id?'selected':''}>${p.name||'Parking'} · ${p.access} · ${p.drive_min??'?'} min</option>`).join('');
  const runs=[...new Map(L.filter(l=>l.p.id===cur.p.id).map(l=>[l.r.id,l.r])).values()];$('o-run').innerHTML=runs.map(r=>`<option value="${r.id}" ${r.id===cur.r.id?'selected':''}>${r.synthetic?'Ski the ascent line':`${r.band_length_m} m ${compass(r.aspect)} · ${Math.round(r.drop)} m drop · max ${r.max_slope.toFixed(0)}° · ${r.forest_share?'trees '+r.forest_share+'%':'open'}`}</option>`).join('');
  const leg=(cls,title,e,extra)=>`<li class="leg ${cls}"><i></i><div><strong>${title}</strong><span>${extra}</span></div></li>`;
- const lake=e=>e&&e.lake_m?` <b class="warn">· crosses ${e.lake_m} m of lake</b>`:'';
+ const lake=e=>(e&&e.lake_m?` <b class="warn">· crosses ${e.lake_m} m of lake</b>`:'')+(e&&e.roads_x?` <b class="warn">· crosses a main road</b>`:'');
  const r=cur.r;
  $('legs').innerHTML=leg('park',`${cur.p.name||'Parking'}${cur.p.road?` (${cur.p.road})`:''}`,null,`<span class="badge ${cur.p.access}">${cur.p.access}</span> ${cur.p.drive_min??'?'} min drive · ${cur.p.lonlat[1].toFixed(4)}, ${cur.p.lonlat[0].toFixed(4)}`)
   +leg('skin','Skin up',cur.up,`${dur(cur.up.hours)} · +${cur.up.gain_m} m / −${cur.up.loss_m} m over ${(cur.up.length_m/1000).toFixed(1)} km · max <b class="${cur.up.max_slope>=30?'warn':'ok'}">${cur.up.max_slope.toFixed(0)}°</b>${cur.up.share_over_30>0?` <b class="warn">· ${cur.up.share_over_30}% on 30–35°</b>`:''} · forest ${cur.up.forest_share??'?'}%${cur.up.drop_m>=30?` · <b class="${cur.up.drop_m>100?'warn':'maybe'}">drops ${cur.up.drop_m} m on the way</b>`:''}${lake(cur.up)}`)
@@ -286,9 +287,9 @@ $('close').addEventListener('click',close);$('pk-close').addEventListener('click
 $('from-park').addEventListener('click',()=>sel&&showPark(sel.p));
 $('pk-tours').addEventListener('click',e=>{const b=e.target.closest('.cand');if(b)pick(b.dataset.id,selPark);});
 $('o-park').addEventListener('change',e=>pick(sel.s,e.target.value));$('o-run').addEventListener('change',e=>pick(sel.s,sel.p,e.target.value));
-for(const id of ['f-drive','f-slope','f-drop','f-run','f-runmax','f-loop','f-continuous','f-nolake','f-face','f-access','f-park'])$(id).addEventListener('input',()=>{compute();if(sel&&loops[sel.s])pick(sel.s,sel.p,sel.r);else if(selPark&&PARKS.has(selPark))showPark(selPark);else{close();}list();});
-function filterSummary(){const v=id=>$(id).value,on=id=>$(id).checked;$('f-sum').textContent=[`≤ ${v('f-drive')} min`,`up ≤ ${v('f-slope')}°`,`run ≥ ${v('f-run')} m`,v('f-drop')!=='99999'&&`drop ≤ ${v('f-drop')} m`,v('f-face')!=='all'&&`facing ${v('f-face')}`,v('f-access')!=='open'&&v('f-access'),on('f-loop')&&'loops',on('f-continuous')&&'continuous'].filter(Boolean).join(' · ');}
-for(const id of ['f-drive','f-slope','f-drop','f-run','f-runmax','f-loop','f-continuous','f-face','f-access','f-park'])$(id).addEventListener('input',filterSummary);
+for(const id of ['f-drive','f-slope','f-drop','f-run','f-runmax','f-loop','f-continuous','f-nolake','f-noroad','f-face','f-access','f-park'])$(id).addEventListener('input',()=>{compute();if(sel&&loops[sel.s])pick(sel.s,sel.p,sel.r);else if(selPark&&PARKS.has(selPark))showPark(selPark);else{close();}list();});
+function filterSummary(){const v=id=>$(id).value,on=id=>$(id).checked;$('f-sum').textContent=[`≤ ${v('f-drive')} min`,`up ≤ ${v('f-slope')}°`,`run ≥ ${v('f-run')} m`,v('f-drop')!=='99999'&&`drop ≤ ${v('f-drop')} m`,!on('f-noroad')&&'main roads ok',v('f-face')!=='all'&&`facing ${v('f-face')}`,v('f-access')!=='open'&&v('f-access'),on('f-loop')&&'loops',on('f-continuous')&&'continuous'].filter(Boolean).join(' · ');}
+for(const id of ['f-drive','f-slope','f-drop','f-run','f-runmax','f-loop','f-continuous','f-noroad','f-face','f-access','f-park'])$(id).addEventListener('input',filterSummary);
 if(innerWidth>800)$('more').open=true;
 $('q').addEventListener('input',list);$('f-sort').addEventListener('input',list);
 $('share').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(location.href);$('share').textContent='Copied';setTimeout(()=>$('share').textContent='Copy link',1500)}catch{}});

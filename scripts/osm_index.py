@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from backend.osm_extract import GEOFABRIK, OSM_DIR, build_index
+from backend.osm_extract import GEOFABRIK, OSM_DIR, build_index, build_main_roads
 
 if __name__ == '__main__':
     name = sys.argv[1]
@@ -17,3 +17,4 @@ if __name__ == '__main__':
     print('indexing', pbf, flush=True)
     n_park, n_pts = build_index(pbf, name)
     print(f'{name}: {n_park} parkings, {n_pts} road points -> {OSM_DIR}', flush=True)
+    print(f'{name}: {build_main_roads(pbf, name)} main road ways', flush=True)
