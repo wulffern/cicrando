@@ -65,6 +65,16 @@ for src in sorted((root / 'data').glob('graph-*.json'), reverse=True):
         shard = {k: rnd(lines[k]) for k in ks if lines.get(k)}
         (ldir / f'{sid}.json').write_text(json.dumps(shard, separators=(',', ':')))
     g['lines_by'] = 'summit'
+    # Largest single descent on each ascent (highest point so far minus where you are), so the
+    # viewer can skip ascents that lose height they have to win back, e.g. dropping into a valley first.
+    for e in g['edges']:
+        line = lines.get(f"{e['from']}>{e['to']}>{e['kind']}")
+        if e['kind'] == 'skin' and line and len(line[0]) > 2:
+            hi, drop = line[0][2], 0
+            for pt in line:
+                hi = max(hi, pt[2])
+                drop = max(drop, hi - pt[2])
+            e['drop_m'] = round(drop)
     # Drop fields the viewer never reads: the phone parses this whole file before showing anything.
     for e in g['edges']:
         for k in ('mean_slope', 'share_over_25', 'runout_m'):
